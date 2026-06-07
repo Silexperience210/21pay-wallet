@@ -1,0 +1,38 @@
+# GSD planning docs (kept local)
+.planning/
+
+# Node / Expo / React Native
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Native builds
+android/app/build/
+android/build/
+android/.gradle/
+ios/build/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# EAS / Expo
+.easignore
+expo-env.d.ts
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+google-services.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
