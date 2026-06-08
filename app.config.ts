@@ -5,6 +5,7 @@ import { ExpoConfig } from 'expo/config';
 const config: ExpoConfig = {
   name: '21pay',
   slug: '21pay-wallet',
+  owner: 'silexperience',
   version: '0.0.1',
   orientation: 'portrait',
   scheme: 'pay21',
@@ -21,6 +22,11 @@ const config: ExpoConfig = {
   plugins: ['expo-router'],
   experiments: {
     typedRoutes: true,
+  },
+  extra: {
+    eas: {
+      projectId: 'e961ee21-0aa8-4e9a-bd9d-173b42311895',
+    },
   },
 };
 
