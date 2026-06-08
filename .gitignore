@@ -31,6 +31,10 @@ expo-env.d.ts
 !.env.example
 google-services.json
 
+# Android signing — NEVER commit (local EAS credentials source)
+credentials.json
+credentials/
+
 # OS / editor
 .DS_Store
 Thumbs.db
