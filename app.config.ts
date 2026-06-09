@@ -19,7 +19,7 @@ const config: ExpoConfig = {
     // exfiltrated to cloud backup (CLAUDE.md constraint 3 / 6).
     allowBackup: false,
   },
-  plugins: ['expo-router'],
+  plugins: ['expo-router', 'expo-secure-store'],
   experiments: {
     typedRoutes: true,
   },
