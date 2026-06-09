@@ -11,13 +11,8 @@
 import https from 'node:https';
 import dns from 'node:dns';
 
+// LNbits v1 account creation is anonymous — no admin key needed.
 const base = process.env.EXPO_PUBLIC_LNBITS_URL || 'https://21pay.org';
-const adminKey = process.env.LNBITS_ADMIN_KEY;
-if (!adminKey) {
-  console.error('Set LNBITS_ADMIN_KEY in your environment first.');
-  process.exit(1);
-}
-
 const host = new URL(base).hostname;
 
 // Resolve via 1.1.1.1, bypassing the flaky FAI resolver.
@@ -51,50 +46,33 @@ function request(method, path, headers, body) {
   });
 }
 
-const H = { 'Content-Type': 'application/json', 'X-Api-Key': adminKey };
-
-// Requires the LNbits UserManager extension enabled on 21pay (Umbrel-side).
-// Without it this returns 404 — and LNbits-core POST /api/v1/wallet needs a user
-// access token (401 with just a wallet key), so UserManager is the supported path.
+// LNbits v1 core: POST /api/v1/account creates a fresh wallet+account and returns
+// its own keys. No admin key required (the <1.0.0 UserManager extension is not used).
 let res;
 try {
   res = await request(
     'POST',
-    '/usermanager/api/v1/users',
-    H,
-    JSON.stringify({ user_name: `21pay-${Date.now()}`, wallet_name: '21pay' }),
+    '/api/v1/account',
+    { 'Content-Type': 'application/json' },
+    JSON.stringify({ name: `21pay-${Date.now()}` }),
   );
 } catch (e) {
   console.error(`Connection failed: ${e.message}`);
   process.exit(1);
 }
-
 if (res.status !== 200 && res.status !== 201) {
   console.error(`LNbits responded ${res.status}: ${res.body.slice(0, 200)}`);
-  if (res.status === 404) {
-    console.error(
-      'UserManager extension is not enabled on 21pay. Enable it (LNbits → Extensions → User Manager) ' +
-        'so the admin key can create users+wallets — then re-run this.',
-    );
-  }
   process.exit(1);
 }
-
-const data = JSON.parse(res.body);
-const w = data.wallets?.[0];
-if (!w) {
-  console.error('No wallet in response:', JSON.stringify(data).slice(0, 300));
+const a = JSON.parse(res.body);
+if (!a.adminkey || !a.inkey) {
+  console.error('No wallet keys in response:', res.body.slice(0, 300));
   process.exit(1);
 }
-console.log('\nFresh custodial wallet created on 21pay LNbits:');
-console.log('  user id   :', data.id);
-console.log('  wallet id :', w.id);
-console.log('  adminkey  :', w.adminkey);
-console.log('  inkey     :', w.inkey);
-try {
-  const bal = await request('GET', '/api/v1/wallet', { 'X-Api-Key': w.inkey });
-  if (bal.status === 200) console.log('  balance   :', Math.floor((JSON.parse(bal.body).balance ?? 0) / 1000), 'sat');
-} catch {
-  /* best effort */
-}
-console.log('\nKeep these wallet keys safe (do NOT commit). Proves ONBD-01 end-to-end.');
+console.log('\nFresh custodial wallet created on 21pay LNbits (ONBD-01):');
+console.log('  wallet id :', a.id);
+console.log('  user id   :', a.user);
+console.log('  adminkey  :', a.adminkey);
+console.log('  inkey     :', a.inkey);
+console.log('  balance   :', Math.floor((a.balance_msat ?? 0) / 1000), 'sat');
+console.log('\nKeep these wallet keys safe (do NOT commit). This is a working custodial wallet on 21pay.');

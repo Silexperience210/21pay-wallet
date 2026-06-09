@@ -18,10 +18,8 @@ export function activateCustodial(config: CustodialLnbitsConfig): WalletBackend 
 }
 
 /** ONBD-01 happy path: open a fresh 21pay account then activate it. */
-export async function createAndActivateCustodial(
-  provisioningAdminKey: string,
-): Promise<WalletBackend> {
-  const config = await createCustodialAccount(provisioningAdminKey);
+export async function createAndActivateCustodial(opts?: { name?: string }): Promise<WalletBackend> {
+  const config = await createCustodialAccount(opts);
   return activateCustodial(config);
 }
 

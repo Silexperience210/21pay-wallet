@@ -35,9 +35,9 @@ describe('walletProvider (useWallet seam)', () => {
     (global as { fetch?: unknown }).fetch = jest.fn(async () => ({
       ok: true,
       status: 200,
-      json: async () => ({ id: 'u', wallets: [{ id: 'w', adminkey: 'NEWadmin', inkey: 'NEWin' }] }),
+      json: async () => ({ id: 'w', user: 'u', adminkey: 'NEWadmin', inkey: 'NEWin', name: '21pay' }),
     }));
-    await createAndActivateCustodial('PROVKEY');
+    await createAndActivateCustodial();
     expect(useWallet().kind).toBe('custodial-lnbits');
     expect(useWalletStore.getState().activeBackendKind).toBe('custodial-lnbits');
   });

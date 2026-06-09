@@ -1,30 +1,29 @@
-// Opens a fresh custodial account on the 21pay LNbits instance (ONBD-01).
-// The LIVE call requires the real 21pay admin key (a per-user secret, never
-// committed) — gated by this plan's autonomous:false checkpoint. The returned
-// config carries the NEW per-user wallet's keys, NOT the provisioning admin key.
+// Opens a fresh custodial wallet on the 21pay LNbits instance (ONBD-01).
+// LNbits v1 merged account/wallet management into core: POST /api/v1/account
+// creates a fresh wallet+account and returns its own keys — no admin key required
+// (the old UserManager extension is capped at <1.0.0 and is NOT used).
+// The returned config carries the NEW wallet's keys; 21pay holds the funds (custodial).
 import { httpRequest } from '../../core/net';
 import { lnbitsBaseUrl, type CustodialLnbitsConfig } from '../lnbitsConfig';
 
-interface LnbitsUserResponse {
-  id: string;
-  wallets: Array<{ id: string; adminkey: string; inkey: string }>;
+interface LnbitsAccountResponse {
+  id: string; // wallet id
+  user: string; // user id
+  adminkey: string;
+  inkey: string;
+  name: string;
 }
 
-export async function createCustodialAccount(
-  provisioningAdminKey: string,
-  opts?: { username?: string },
-): Promise<CustodialLnbitsConfig> {
+export async function createCustodialAccount(opts?: { name?: string }): Promise<CustodialLnbitsConfig> {
   const baseUrl = lnbitsBaseUrl();
-  // UserManager extension (project memory: no /register web flow — use the API).
-  const res = await httpRequest<LnbitsUserResponse>({
+  const res = await httpRequest<LnbitsAccountResponse>({
     baseUrl,
-    path: '/usermanager/api/v1/users',
+    path: '/api/v1/account',
     method: 'POST',
-    apiKey: provisioningAdminKey, // never logged; never returned
-    body: { user_name: opts?.username ?? `21pay-${Date.now()}`, wallet_name: '21pay' },
+    body: { name: opts?.name ?? `21pay-${Date.now()}` },
   });
-  const wallet = res.data.wallets?.[0];
-  if (!wallet) throw new Error('LNbits did not return a wallet');
-  // The running app uses the NEW wallet's own credentials, not the admin key.
-  return { baseUrl, adminKey: wallet.adminkey, invoiceKey: wallet.inkey, readKey: wallet.inkey };
+  const a = res.data;
+  if (!a?.adminkey || !a?.inkey) throw new Error('LNbits did not return wallet keys');
+  // The running app uses the NEW wallet's own credentials.
+  return { baseUrl, adminKey: a.adminkey, invoiceKey: a.inkey, readKey: a.inkey };
 }

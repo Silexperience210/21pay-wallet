@@ -1,4 +1,4 @@
-// Req ONBD-01 — provisioning logic against a mocked LNbits API (no live server).
+// Req ONBD-01 — provisioning via LNbits v1 core POST /api/v1/account (mocked fetch).
 import { createCustodialAccount } from './custodialProvision';
 
 beforeEach(() => {
@@ -13,28 +13,22 @@ function mockFetch(res: { ok: boolean; status: number; body: unknown }) {
   }));
 }
 
-describe('createCustodialAccount', () => {
-  it('returns the NEW wallet keys (not the provisioning key) + base URL from env', async () => {
+describe('createCustodialAccount (LNbits v1 /api/v1/account)', () => {
+  it('returns the NEW wallet keys + base URL from env', async () => {
     mockFetch({
       ok: true,
       status: 200,
-      body: { id: 'u1', wallets: [{ id: 'w1', adminkey: 'NEW-ADMIN', inkey: 'NEW-IN' }] },
+      body: { id: 'w1', user: 'u1', adminkey: 'NEW-ADMIN', inkey: 'NEW-IN', name: '21pay-x' },
     });
-    const cfg = await createCustodialAccount('PROVISION-KEY');
+    const cfg = await createCustodialAccount();
     expect(cfg.adminKey).toBe('NEW-ADMIN');
     expect(cfg.invoiceKey).toBe('NEW-IN');
-    expect(cfg.adminKey).not.toBe('PROVISION-KEY');
+    expect(cfg.readKey).toBe('NEW-IN');
     expect(cfg.baseUrl).toBe('https://lnbits.test');
   });
 
-  it('throws on a 401 without leaking the provisioning admin key', async () => {
-    mockFetch({ ok: false, status: 401, body: {} });
-    let msg = '';
-    try {
-      await createCustodialAccount('PROVISION-KEY-SUPER-SECRET');
-    } catch (e) {
-      msg = (e as Error).message;
-    }
-    expect(msg).not.toContain('PROVISION-KEY-SUPER-SECRET');
+  it('throws if LNbits returns no wallet keys', async () => {
+    mockFetch({ ok: true, status: 200, body: { id: 'w1', user: 'u1', name: 'x' } });
+    await expect(createCustodialAccount()).rejects.toThrow();
   });
 });
