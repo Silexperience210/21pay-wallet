@@ -19,7 +19,16 @@ const config: ExpoConfig = {
     // exfiltrated to cloud backup (CLAUDE.md constraint 3 / 6).
     allowBackup: false,
   },
-  plugins: ['expo-router', 'expo-secure-store', 'expo-sqlite'],
+  plugins: [
+    'expo-router',
+    'expo-secure-store',
+    'expo-sqlite',
+    'expo-font',
+    [
+      'expo-camera',
+      { cameraPermission: 'Scan a Lightning or on-chain QR code to pay or receive.' },
+    ],
+  ],
   experiments: {
     typedRoutes: true,
   },
