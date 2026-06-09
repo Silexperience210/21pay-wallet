@@ -36,5 +36,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The signing keystore is gitignored — restore it (+ credentials.json) from
+      # secrets so `credentialsSource: local` builds sign with the SAME keystore as
+      # local builds. Files are written outside the repo tree's tracked paths.
+      - name: Restore Android signing credentials
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          CREDENTIALS_JSON: ${{ secrets.CREDENTIALS_JSON }}
+        run: |
+          mkdir -p credentials
+          echo "$ANDROID_KEYSTORE_B64" | base64 -d > credentials/release.keystore
+          printf '%s' "$CREDENTIALS_JSON" > credentials.json
+
       - name: Trigger EAS build (Android, signed APK)
         run: npx eas-cli build --platform android --profile ${{ github.event.inputs.profile || 'preview' }} --non-interactive --no-wait
