@@ -10,3 +10,5 @@ export { BalanceDisplay } from './BalanceDisplay';
 export { FiatLine } from './FiatLine';
 export { EmptyState } from './EmptyState';
 export { TxList, TxListItem } from './TxList';
+export { BottomNav } from './BottomNav';
+export { EnergyTransfer } from './EnergyTransfer';
