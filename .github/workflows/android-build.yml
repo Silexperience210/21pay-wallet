@@ -21,6 +21,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release + upload the APK
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
     steps:
@@ -48,5 +50,26 @@ jobs:
           echo "$ANDROID_KEYSTORE_B64" | base64 -d > credentials/release.keystore
           printf '%s' "$CREDENTIALS_JSON" > credentials.json
 
-      - name: Trigger EAS build (Android, signed APK)
-        run: npx eas-cli build --platform android --profile ${{ github.event.inputs.profile || 'preview' }} --non-interactive --no-wait
+      # Wait for the EAS build to finish and capture the signed artifact URL.
+      - name: Build APK on EAS (wait for completion)
+        id: eas
+        run: |
+          npx eas-cli build \
+            --platform android \
+            --profile "${{ github.event.inputs.profile || 'preview' }}" \
+            --non-interactive --json > build.json
+          URL=$(jq -r '.[0].artifacts.applicationArchiveUrl // .[0].artifacts.buildUrl' build.json)
+          echo "Artifact URL: $URL"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Download the signed APK
+        run: curl -fL -o "21pay-${{ github.ref_name }}.apk" "${{ steps.eas.outputs.url }}"
+
+      # On an apk-* tag, publish the APK as a GitHub Release (skipped for manual runs).
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/apk-')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 21pay ${{ github.ref_name }}
+          files: 21pay-${{ github.ref_name }}.apk
+          generate_release_notes: true
