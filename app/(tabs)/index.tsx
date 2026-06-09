@@ -8,11 +8,13 @@ import {
   TxList,
   PrimaryButton,
   SecondaryButton,
+  BackupBanner,
   theme,
 } from '@/ui';
 import { useWallet, createAndActivateCustodial } from '@/wallet';
 import { fetchSatFiatRate } from '@/wallet/price';
 import { useWalletStore } from '@/core/state';
+import { t } from '@/i18n';
 
 export default function Home(): React.ReactElement {
   const activeBackendKind = useWalletStore((s) => s.activeBackendKind);
@@ -61,11 +63,9 @@ export default function Home(): React.ReactElement {
 
   if (!activeBackendKind) {
     return (
-      <ScreenScaffold title="21pay">
-        <Text style={styles.lead}>
-          Your sovereign Bitcoin wallet. Create a custodial 21pay wallet to get started.
-        </Text>
-        <PrimaryButton label="Create my 21pay wallet" onPress={onboard} loading={busy} />
+      <ScreenScaffold title={t('home.title.onboard')}>
+        <Text style={styles.lead}>{t('home.lead')}</Text>
+        <PrimaryButton label={t('home.create')} onPress={onboard} loading={busy} />
         {err ? <Text style={styles.err}>{err}</Text> : null}
       </ScreenScaffold>
     );
@@ -76,22 +76,26 @@ export default function Home(): React.ReactElement {
   const txs = txByBackend[activeBackendKind] ?? [];
 
   return (
-    <ScreenScaffold title="Wallet" scroll>
+    <ScreenScaffold title={t('home.title.wallet')} scroll>
+      <BackupBanner />
       <BalanceDisplay lightningSat={sats} onchainSat={bal?.onchainSat} />
       <FiatLine sats={sats} ratePerSat={rate} />
-      <PrimaryButton label="⚡  Tap to pay (NFC)" onPress={() => router.push('/nfc')} />
+      <PrimaryButton label={t('home.tapToPay')} onPress={() => router.push('/nfc')} />
       <View style={styles.actions}>
         <View style={styles.actionItem}>
-          <SecondaryButton label="Receive — soon" onPress={() => {}} />
+          <SecondaryButton label={t('home.receive')} onPress={() => router.push('/receive')} />
         </View>
         <View style={styles.actionItem}>
-          <SecondaryButton label="Send — soon" onPress={() => {}} />
+          <SecondaryButton label={t('home.send')} onPress={() => router.push('/send')} />
+        </View>
+        <View style={styles.actionItem}>
+          <SecondaryButton label={t('home.scan')} onPress={() => router.push('/scan')} />
         </View>
       </View>
-      <Text style={styles.eyebrow}>Recent</Text>
+      <Text style={styles.eyebrow}>{t('home.recent')}</Text>
       <TxList txs={txs} compact />
       <View style={styles.spacer} />
-      <SecondaryButton label="Casino · Mineurs · Markets — soon" onPress={() => {}} />
+      <SecondaryButton label={t('home.sections')} onPress={() => {}} />
     </ScreenScaffold>
   );
 }

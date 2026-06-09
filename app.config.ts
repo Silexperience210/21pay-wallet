@@ -32,6 +32,9 @@ const config: ExpoConfig = {
       'react-native-nfc-manager',
       { nfcPermission: 'Tap to pay or receive Bitcoin over NFC.' },
     ],
+    // Local plugin: registers the HCE HostApduService so the phone can emulate an NFC
+    // tag carrying a Lightning invoice (receive-by-tap without a physical tag).
+    './plugins/withHce',
   ],
   experiments: {
     typedRoutes: true,

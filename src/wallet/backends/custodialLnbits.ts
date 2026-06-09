@@ -35,7 +35,7 @@ export class CustodialLnbits implements WalletBackend {
     return { bolt11: res.data.payment_request };
   }
 
-  async payInvoice(bolt11: string): Promise<{ preimage: string; feeSat: number }> {
+  async payInvoice(bolt11: string): Promise<{ preimage: string; feeSat: number; paymentHash?: string }> {
     // Idempotency guard (T-02-12): register the pay; a repeated submission is a no-op.
     const fresh = enqueue({
       dedupeKey: `pay:${bolt11}`,
@@ -58,10 +58,14 @@ export class CustodialLnbits implements WalletBackend {
       body: { out: true, bolt11 },
       idempotent: false, // a pay is NEVER blindly re-sent at the HTTP layer
     });
-    return { preimage: res.data.preimage ?? '', feeSat: Math.floor(Math.abs(res.data.fee ?? 0) / 1000) };
+    return {
+      preimage: res.data.preimage ?? '',
+      feeSat: Math.floor(Math.abs(res.data.fee ?? 0) / 1000),
+      paymentHash: res.data.payment_hash,
+    };
   }
 
-  async payLnAddress(addr: string, amountSat: number): Promise<{ preimage: string }> {
+  async payLnAddress(addr: string, amountSat: number): Promise<{ preimage: string; paymentHash?: string }> {
     const [name, domain] = addr.split('@');
     if (!name || !domain) throw new Error('invalid lightning address');
     const meta = await httpRequest<{ callback: string }>({
@@ -75,8 +79,29 @@ export class CustodialLnbits implements WalletBackend {
       path: `?amount=${amountSat * 1000}`,
       idempotent: true,
     });
-    const { preimage } = await this.payInvoice(inv.data.pr);
-    return { preimage };
+    const { preimage, paymentHash } = await this.payInvoice(inv.data.pr);
+    return { preimage, paymentHash };
+  }
+
+  /** Create an LNURL-withdraw link (LNbits withdraw extension) to present as an HCE
+   *  card so a terminal can pull `amountSat`. Throws if the extension is disabled. */
+  async getWithdrawLink(amountSat: number): Promise<{ lnurl: string }> {
+    const res = await httpRequest<{ lnurl: string }>({
+      baseUrl: this.cfg.baseUrl,
+      path: '/withdraw/api/v1/links',
+      method: 'POST',
+      apiKey: this.cfg.adminKey,
+      body: {
+        title: '21pay tap-to-pay',
+        min_withdrawable: amountSat,
+        max_withdrawable: amountSat,
+        uses: 1,
+        wait_time: 1,
+        is_unique: true,
+      },
+    });
+    if (!res.data.lnurl) throw new Error('withdraw link unavailable');
+    return { lnurl: res.data.lnurl };
   }
 
   async listTransactions(): Promise<{ txs: WalletTx[]; next?: string }> {

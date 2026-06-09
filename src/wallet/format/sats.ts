@@ -16,3 +16,14 @@ export function formatFiat(amount: number, currency = 'EUR'): string {
   const v = Number.isFinite(amount) ? amount : 0;
   return `≈ ${sym}${v.toFixed(2)}`;
 }
+
+/**
+ * Sanitize free text into an integer sats value (or null for empty/invalid).
+ * Strips everything non-digit so we never produce NaN or fractional sats.
+ */
+export function sanitizeSatInput(text: string): number | null {
+  const digits = text.replace(/[^0-9]/g, '');
+  if (digits === '') return null;
+  const n = parseInt(digits, 10);
+  return Number.isFinite(n) ? n : null;
+}

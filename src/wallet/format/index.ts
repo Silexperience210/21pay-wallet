@@ -1,1 +1,1 @@
-export { formatSats, satsToFiat, formatFiat, CURRENCY_SYMBOLS } from './sats';
+export { formatSats, satsToFiat, formatFiat, sanitizeSatInput, CURRENCY_SYMBOLS } from './sats';

@@ -25,7 +25,9 @@ export default function RootLayout(): React.ReactElement {
           >
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="nfc" options={{ presentation: 'fullScreenModal' }} />
-            {/* receive / send / scan modal routes are added in plans 03-05 / 03-06 */}
+            <Stack.Screen name="receive" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="scan" options={{ presentation: 'fullScreenModal' }} />
+            <Stack.Screen name="send" options={{ presentation: 'modal' }} />
           </Stack>
         </WalletProvider>
       </SafeAreaProvider>

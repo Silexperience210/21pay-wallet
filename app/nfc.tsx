@@ -1,48 +1,90 @@
-// NFC direct payment — real radio (react-native-nfc-manager) + synchronized
-// energy-transfer visualization.
-//   SEND    → read a Lightning tag/card (NDEF) and pay the BOLT11 it carries.
-//   RECEIVE → write a fresh invoice onto a programmable tag.
-// Animation is driven by the actual NFC session lifecycle. NFC ops only work on a
-// physical NFC device (verified at the device checkpoint).
-import React, { useEffect, useState } from 'react';
+// NFC direct payment — real radio (react-native-nfc-manager) + HCE (react-native-hce)
+// + synchronized energy-transfer visualization.
+//   SEND    → reader mode: read a Lightning tag/card/phone (NDEF) and pay the BOLT11.
+//   RECEIVE → HCE: emulate a tag carrying a fresh invoice (choose the amount) so the
+//             other party taps to pay (no physical tag — phone-to-phone with SEND).
+//   CARD    → HCE: present an LNURL-withdraw link so a terminal PULLS the payment
+//             (BoltCard-style tap-to-pay). Needs the LNbits withdraw extension.
+// Emulation auto-stops after a tap-session timeout so we never serve a stale link.
+// NFC ops only work on a physical NFC device (verified at the device checkpoint).
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { EnergyTransfer, PrimaryButton, SecondaryButton, theme } from '@/ui';
+import { EnergyTransfer, PrimaryButton, SecondaryButton, AmountInput, theme } from '@/ui';
 import { useWallet } from '@/wallet';
 import { parsePaymentInput } from '@/wallet/parse';
 import { useWalletStore } from '@/core/state';
-import { isSupported, readPaymentUri, writePaymentUri, cancel } from '@/nfc';
+import { isSupported, readPaymentUri, cancel, startEmulation, stopEmulation } from '@/nfc';
+import { t } from '@/i18n';
 
 type Phase = 'idle' | 'waiting' | 'transferring' | 'done' | 'error';
-type Role = 'send' | 'receive';
+type Role = 'send' | 'receive' | 'card';
+
+// A tap session shouldn't keep emulating forever — drop the HCE tag after this.
+const SESSION_TIMEOUT_MS = 120_000;
 
 export default function NfcScreen(): React.ReactElement {
+  const wallet = (() => {
+    try {
+      return useWallet();
+    } catch {
+      return null;
+    }
+  })();
   const activeBackendKind = useWalletStore((s) => s.activeBackendKind);
   const [supported, setSupported] = useState<boolean | null>(null);
   const [role, setRole] = useState<Role>('send');
+  const [amountSat, setAmountSat] = useState<number | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
-  const [msg, setMsg] = useState('Hold a Lightning tag to the back of your phone.');
+  const [msg, setMsg] = useState(t('nfc.idle'));
+  const sessionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearSession = () => {
+    if (sessionTimer.current) clearTimeout(sessionTimer.current);
+    sessionTimer.current = null;
+  };
 
   useEffect(() => {
     isSupported().then(setSupported).catch(() => setSupported(false));
     return () => {
+      clearSession();
       cancel().catch(() => {});
+      stopEmulation().catch(() => {});
     };
   }, []);
 
   const active = phase === 'waiting' || phase === 'transferring';
+  const emulationRole: 'send' | 'receive' = role === 'send' ? 'send' : 'receive';
+
+  // Start a HCE emulation with a session timeout that drops the tag if never read.
+  const emulate = async (uri: string, doneMsg: string) => {
+    setPhase('transferring');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    await startEmulation(uri, () => {
+      clearSession();
+      setPhase('done');
+      setMsg(doneMsg);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      stopEmulation().catch(() => {});
+    });
+    sessionTimer.current = setTimeout(() => {
+      stopEmulation().catch(() => {});
+      setPhase('error');
+      setMsg(t('nfc.expired'));
+    }, SESSION_TIMEOUT_MS);
+  };
 
   const runSend = async () => {
-    if (!activeBackendKind) {
+    if (!activeBackendKind || !wallet) {
       setPhase('error');
-      setMsg('Create a wallet first.');
+      setMsg(t('nfc.createWalletFirst'));
       return;
     }
     setPhase('waiting');
-    setMsg('Hold the Lightning tag to your phone…');
+    setMsg(t('nfc.holdTag'));
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     try {
       const raw = await readPaymentUri();
@@ -51,100 +93,133 @@ export default function NfcScreen(): React.ReactElement {
         parsed.kind === 'bolt11' ? parsed.invoice : parsed.kind === 'bip21' ? parsed.lightning : undefined;
       if (!invoice) {
         setPhase('error');
-        setMsg('That tag has no payable Lightning invoice.');
+        setMsg(t('nfc.noInvoice'));
         return;
       }
       setPhase('transferring');
-      setMsg('Transferring energy…');
-      await useWallet().payInvoice(invoice);
+      setMsg(t('nfc.transferring'));
+      await wallet.payInvoice(invoice);
       setPhase('done');
-      setMsg('Paid. Your sats moved.');
+      setMsg(t('nfc.paid'));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (e) {
       setPhase('error');
-      setMsg((e as Error)?.message ?? 'NFC payment failed.');
+      setMsg((e as Error)?.message ?? t('nfc.payFailed'));
     }
   };
 
   const runReceive = async () => {
-    if (!activeBackendKind) {
+    if (!activeBackendKind || !wallet) {
       setPhase('error');
-      setMsg('Create a wallet first.');
+      setMsg(t('nfc.createWalletFirst'));
       return;
     }
     setPhase('waiting');
-    setMsg('Creating an invoice, then hold a writable tag…');
+    setMsg(t('nfc.creatingInvoice'));
     try {
-      const { bolt11 } = await useWallet().createInvoice(1000, '21pay NFC');
-      setPhase('transferring');
-      await writePaymentUri(`lightning:${bolt11}`);
-      setPhase('done');
-      setMsg('Invoice written to the tag.');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      const { bolt11 } = await wallet.createInvoice(amountSat ?? 0, '21pay NFC');
+      setMsg(t('nfc.holdOther'));
+      await emulate(`lightning:${bolt11}`, t('nfc.delivered'));
     } catch (e) {
       setPhase('error');
-      setMsg((e as Error)?.message ?? 'Could not write the tag.');
+      setMsg((e as Error)?.message ?? t('nfc.emuFailed'));
+      stopEmulation().catch(() => {});
+    }
+  };
+
+  const runCard = async () => {
+    if (!activeBackendKind || !wallet) {
+      setPhase('error');
+      setMsg(t('nfc.createWalletFirst'));
+      return;
+    }
+    if (!wallet.getWithdrawLink) {
+      setPhase('error');
+      setMsg(t('nfc.emuFailed'));
+      return;
+    }
+    setPhase('waiting');
+    setMsg(t('nfc.creatingInvoice'));
+    try {
+      const { lnurl } = await wallet.getWithdrawLink(amountSat ?? 0);
+      setMsg(t('nfc.holdOther'));
+      await emulate(lnurl.toUpperCase(), t('nfc.delivered'));
+    } catch (e) {
+      setPhase('error');
+      setMsg((e as Error)?.message ?? t('nfc.emuFailed'));
+      stopEmulation().catch(() => {});
     }
   };
 
   const reset = () => {
+    clearSession();
     cancel().catch(() => {});
+    stopEmulation().catch(() => {});
     setPhase('idle');
-    setMsg('Hold a Lightning tag to the back of your phone.');
+    setMsg(t('nfc.idle'));
+  };
+
+  const onPrimary = role === 'send' ? runSend : role === 'receive' ? runReceive : runCard;
+  const primaryLabel = role === 'send' ? t('nfc.tapToPay') : t('nfc.tapToReceive');
+  const roleIcon: Record<Role, keyof typeof Feather.glyphMap> = {
+    send: 'arrow-up-right',
+    receive: 'arrow-down-left',
+    card: 'credit-card',
   };
 
   return (
     <View style={styles.root}>
-      <EnergyTransfer role={role} active={active} />
+      <EnergyTransfer role={emulationRole} active={active} />
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close">
+          <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel={t('nfc.close')}>
             <Feather name="x" size={26} color={theme.color.text} />
           </Pressable>
-          <Text style={styles.title}>NFC Pay</Text>
+          <Text style={styles.title}>{t('nfc.title')}</Text>
           <View style={{ width: 26 }} />
         </View>
 
         {phase === 'idle' && supported !== false ? (
-          <View style={styles.roleRow}>
-            {(['send', 'receive'] as Role[]).map((r) => (
-              <Pressable
-                key={r}
-                onPress={() => setRole(r)}
-                style={[styles.chip, role === r && styles.chipActive]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: role === r }}
-              >
-                <Feather
-                  name={r === 'send' ? 'arrow-up-right' : 'arrow-down-left'}
-                  size={16}
-                  color={role === r ? '#050505' : theme.color.textMuted}
-                />
-                <Text style={[styles.chipLabel, role === r && styles.chipLabelActive]}>
-                  {r === 'send' ? 'Send' : 'Receive'}
-                </Text>
-              </Pressable>
-            ))}
+          <View style={styles.controls}>
+            <View style={styles.roleRow}>
+              {(['send', 'receive', 'card'] as Role[]).map((r) => (
+                <Pressable
+                  key={r}
+                  onPress={() => setRole(r)}
+                  style={[styles.chip, role === r && styles.chipActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: role === r }}
+                >
+                  <Feather name={roleIcon[r]} size={16} color={role === r ? '#050505' : theme.color.textMuted} />
+                  <Text style={[styles.chipLabel, role === r && styles.chipLabelActive]}>
+                    {r === 'send' ? t('nfc.send') : r === 'receive' ? t('nfc.receive') : 'Card'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            {role !== 'send' ? (
+              <View style={styles.amountWrap}>
+                <Text style={styles.amountLabel}>{t('nfc.amountLabel')}</Text>
+                <AmountInput valueSat={amountSat} onChange={setAmountSat} />
+              </View>
+            ) : null}
           </View>
         ) : null}
 
         <View style={styles.footer}>
           <Text style={[styles.status, phase === 'error' && { color: theme.color.destructive }]}>
-            {supported === false ? 'This device has no NFC.' : msg}
+            {supported === false ? t('nfc.noNfc') : msg}
           </Text>
           {supported === false ? (
-            <SecondaryButton label="Close" onPress={() => router.back()} />
+            <SecondaryButton label={t('nfc.close')} onPress={() => router.back()} />
           ) : phase === 'idle' ? (
-            <PrimaryButton
-              label={role === 'send' ? 'Tap to pay' : 'Write invoice to tag'}
-              onPress={role === 'send' ? runSend : runReceive}
-            />
+            <PrimaryButton label={primaryLabel} onPress={onPrimary} />
           ) : phase === 'done' ? (
-            <PrimaryButton label="Done" onPress={() => router.back()} />
+            <PrimaryButton label={t('nfc.done')} onPress={() => router.back()} />
           ) : phase === 'error' ? (
-            <PrimaryButton label="Try again" onPress={reset} />
+            <PrimaryButton label={t('nfc.tryAgain')} onPress={reset} />
           ) : (
-            <SecondaryButton label="Cancel" onPress={reset} />
+            <SecondaryButton label={t('nfc.cancel')} onPress={reset} />
           )}
         </View>
       </SafeAreaView>
@@ -163,7 +238,8 @@ const styles = StyleSheet.create({
     paddingTop: theme.space.sm,
   },
   title: { fontFamily: theme.font.heading.fontFamily, fontSize: 18, color: theme.color.text },
-  roleRow: { flexDirection: 'row', gap: theme.space.md, justifyContent: 'center', marginTop: theme.space.lg },
+  controls: { gap: theme.space.xl, marginTop: theme.space.lg },
+  roleRow: { flexDirection: 'row', gap: theme.space.sm, justifyContent: 'center' },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -178,6 +254,8 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: theme.color.accent, borderColor: theme.color.accent },
   chipLabel: { fontFamily: theme.font.label.fontFamily, fontSize: 14, color: theme.color.textMuted },
   chipLabelActive: { color: '#050505' },
+  amountWrap: { paddingHorizontal: theme.space.xl, gap: theme.space.sm },
+  amountLabel: { fontFamily: theme.font.label.fontFamily, fontSize: 13, color: theme.color.textMuted, textAlign: 'center' },
   footer: { paddingHorizontal: theme.space.xl, gap: theme.space.lg },
   status: {
     fontFamily: theme.font.mono.fontFamily,

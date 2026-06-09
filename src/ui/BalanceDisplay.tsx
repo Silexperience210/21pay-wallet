@@ -1,8 +1,10 @@
-// Per-backend balance with a sats count-up. LN and on-chain are SEPARATE lines —
-// never summed (ONBD-05). WALLET-06/07.
+// Per-backend balance with a sats count-up. LN and on-chain stay SEPARATE lines
+// (ONBD-05 intent) — but a discreet combined "Total" is shown when both exist, per
+// explicit user request overriding ONBD-05's no-merged-total rule. WALLET-06/07.
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { formatSats } from '../wallet/format';
+import { t } from '@/i18n';
 import { theme } from './theme';
 import { useReducedMotion } from './useReducedMotion';
 
@@ -48,7 +50,15 @@ export function BalanceDisplay({
         {formatSats(shown)}
       </Text>
       {onchainSat != null ? (
-        <Text style={styles.onchain}>On-chain · {formatSats(onchainSat)}</Text>
+        <>
+          <Text style={styles.onchain}>{t('balance.onchain', { amount: formatSats(onchainSat) })}</Text>
+          <Text
+            style={styles.total}
+            accessibilityLabel={`Total balance ${lightningSat + onchainSat} sats`}
+          >
+            {t('balance.total', { amount: formatSats(lightningSat + onchainSat) })}
+          </Text>
+        </>
       ) : null}
     </View>
   );
@@ -66,5 +76,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.color.textMuted,
     marginTop: theme.space.sm,
+  },
+  total: {
+    fontFamily: theme.font.mono.fontFamily,
+    fontSize: 12,
+    color: theme.color.textMuted,
+    opacity: 0.7,
+    marginTop: theme.space.xs,
   },
 });

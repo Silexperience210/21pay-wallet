@@ -21,8 +21,29 @@ export function openDb(): DB {
       memo TEXT
     )`,
   );
-  db.execSync('PRAGMA user_version = 1'); // migration ordering slot
+  // Non-secret app prefs (claimed LN address, backup-confirmed flag, …). Public
+  // data only — NEVER secrets (those live in the Vault, CLAUDE.md anti-pattern 4).
+  db.execSync(
+    `CREATE TABLE IF NOT EXISTS prefs (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    )`,
+  );
+  db.execSync('PRAGMA user_version = 2'); // migration ordering slot
   return db;
+}
+
+/** Read a non-secret pref, or null. */
+export function getPref(key: string): string | null {
+  const r = conn().getFirstSync(`SELECT value FROM prefs WHERE key = ?`, [key]) as
+    | { value?: string }
+    | null;
+  return r?.value ?? null;
+}
+
+/** Write a non-secret pref. NEVER store secrets here. */
+export function setPref(key: string, value: string): void {
+  conn().runSync(`INSERT OR REPLACE INTO prefs (key, value) VALUES (?, ?)`, [key, value]);
 }
 
 function conn(): DB {

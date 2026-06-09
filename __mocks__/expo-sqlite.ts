@@ -24,8 +24,17 @@ export function openDatabaseSync(_name: string) {
   return {
     execSync(sql: string): void {
       if (/CREATE TABLE.*wallet_tx/is.test(sql)) ensure('wallet_tx');
+      if (/CREATE TABLE.*prefs/is.test(sql)) ensure('prefs');
     },
     runSync(sql: string, params: unknown[] = []): { changes: number } {
+      if (/INSERT.*prefs/is.test(sql)) {
+        const arr = ensure('prefs');
+        const row: Row = { key: params[0] ?? null, value: params[1] ?? null };
+        const idx = arr.findIndex((r) => r.key === row.key);
+        if (idx >= 0) arr[idx] = row;
+        else arr.push(row);
+        return { changes: 1 };
+      }
       if (/INSERT.*wallet_tx/is.test(sql)) {
         const arr = ensure('wallet_tx');
         const row: Row = {};
@@ -53,6 +62,9 @@ export function openDatabaseSync(_name: string) {
       return rows;
     },
     getFirstSync(sql: string, params: unknown[] = []): Row | null {
+      if (/FROM prefs/i.test(sql)) {
+        return ensure('prefs').find((r) => r.key === params[0]) ?? null;
+      }
       return this.getAllSync(sql, params)[0] ?? null;
     },
   };
