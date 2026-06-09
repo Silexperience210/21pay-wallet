@@ -28,6 +28,10 @@ const config: ExpoConfig = {
       'expo-camera',
       { cameraPermission: 'Scan a Lightning or on-chain QR code to pay or receive.' },
     ],
+    [
+      'react-native-nfc-manager',
+      { nfcPermission: 'Tap to pay or receive Bitcoin over NFC.' },
+    ],
   ],
   experiments: {
     typedRoutes: true,
