@@ -42,3 +42,13 @@ describe('walletProvider (useWallet seam)', () => {
     expect(useWalletStore.getState().activeBackendKind).toBe('custodial-lnbits');
   });
 });
+
+// RED seam stub (ONBD-04) — Wave-0 gap enumeration for the sovereignty-ladder
+// activate* seam. activateNwc / activateSelfHosted / rehydrate-by-kind do not
+// exist yet; these it.todo entries are FILLED in 04-03 Task 3 once those
+// functions land on walletProvider.tsx. See 04-VALIDATION.md Wave-0.
+describe('walletProvider sovereignty-ladder seam (ONBD-04) [RED stub, filled in 04-03 T3]', () => {
+  it.todo('ONBD-04: activateNwc(config) sets module-scoped active to an NwcRemote and badge kind to "nwc"');
+  it.todo('ONBD-04: activateSelfHosted(config) sets active to a SelfHosted(Spark) and badge kind to "self-hosted"');
+  it.todo('ONBD-04: rehydrate() branches by persisted backend kind (custodial -> custodial path, nwc -> activateNwc, self-hosted -> activateSelfHosted)');
+});
