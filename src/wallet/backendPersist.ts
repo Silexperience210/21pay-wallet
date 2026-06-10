@@ -10,9 +10,11 @@
 // This is also the seam Phase 4 (D-05) extends to persist NWC connections + Spark config.
 import * as SecureStore from 'expo-secure-store';
 import type { CustodialLnbitsConfig } from './lnbitsConfig';
+import type { BackendKind } from './types';
 
 const BACKEND_SERVICE = 'org.pay21.wallet.backends';
 const CUSTODIAL_KEY = 'custodial.config';
+const ACTIVE_KIND_KEY = 'active.kind';
 
 /** Save the active custodial config so it can be rehydrated after an app restart. */
 export async function persistCustodialConfig(config: CustodialLnbitsConfig): Promise<void> {
@@ -42,4 +44,22 @@ export async function loadPersistedCustodialConfig(): Promise<CustodialLnbitsCon
 /** Forget the persisted custodial config (e.g. on logout / wallet reset). */
 export async function clearPersistedBackends(): Promise<void> {
   await SecureStore.deleteItemAsync(CUSTODIAL_KEY, { keychainService: BACKEND_SERVICE });
+  await SecureStore.deleteItemAsync(ACTIVE_KIND_KEY, { keychainService: BACKEND_SERVICE });
+}
+
+/** Record which backend kind is active so rehydrate() restores the RIGHT one on launch
+ *  (D-05 — nothing is forgotten). Non-secret marker. */
+export async function persistActiveBackendKind(kind: BackendKind): Promise<void> {
+  await SecureStore.setItemAsync(ACTIVE_KIND_KEY, kind, { keychainService: BACKEND_SERVICE });
+}
+
+/** The last active backend kind, or null (→ custodial fallback / onboarding). */
+export async function loadActiveBackendKind(): Promise<BackendKind | null> {
+  let v: string | null = null;
+  try {
+    v = await SecureStore.getItemAsync(ACTIVE_KIND_KEY, { keychainService: BACKEND_SERVICE });
+  } catch {
+    return null;
+  }
+  return v === 'custodial-lnbits' || v === 'nwc' || v === 'self-hosted' ? v : null;
 }

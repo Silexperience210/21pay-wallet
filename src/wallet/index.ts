@@ -20,9 +20,25 @@ export {
   WalletProvider,
   useWallet,
   activateCustodial,
-  createAndActivateCustodial, ensureMasterKey, syncHistory,
+  activateNwc,
+  activateSelfHosted,
+  createAndActivateCustodial,
+  createAndActivateNwc,
+  ensureMasterKey, syncHistory,
   getActiveCustodialConfig,
+  getActiveSparkConfig,
   rehydrate,
 } from './walletProvider';
 export { createCustodialAccount } from './backends/custodialProvision';
 export { clearPersistedBackends } from './backendPersist';
+// Config types only — concrete backend classes are NEVER exported (CLAUDE.md #5).
+export type { NwcConnectionConfig } from './backends/nwcRemote';
+export type { SparkConfig } from './sparkConfig';
+export {
+  listConnections,
+  loadConnectionConfig,
+  getActiveConnectionConfig,
+  setActiveConnection,
+  deleteConnection,
+} from './connections';
+export type { NwcConnectionMeta } from './connections';
