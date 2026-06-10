@@ -16,6 +16,7 @@ import { t } from '@/i18n';
 import { theme } from './theme';
 import { useReducedMotion } from './useReducedMotion';
 import { PrimaryButton } from './PrimaryButton';
+import { SuccessBurst } from './SuccessBurst';
 
 const copyFor = (status: PaymentStatus): { title: string; body: string } => ({
   title: t(`pay.${status}.title`),
@@ -61,6 +62,11 @@ export function PaymentStatusSheet({
 
   return (
     <Animated.View style={[styles.wrap, animStyle]}>
+      {status === 'settled' ? (
+        <View style={styles.burst} pointerEvents="none">
+          <SuccessBurst play />
+        </View>
+      ) : null}
       <AnimatePresence exitBeforeEnter>
         <MotiView
           key={status}
@@ -85,6 +91,7 @@ export function PaymentStatusSheet({
 
 const styles = StyleSheet.create({
   wrap: { gap: theme.space.xl, alignItems: 'stretch' },
+  burst: { position: 'absolute', top: 0, left: 0, right: 0, height: 200, alignItems: 'center', justifyContent: 'center' },
   node: { alignItems: 'center', gap: theme.space.md, paddingVertical: theme.space.xl },
   dot: { width: 16, height: 16, borderRadius: 8 },
   title: { fontFamily: theme.font.heading.fontFamily, fontSize: 22, color: theme.color.text },

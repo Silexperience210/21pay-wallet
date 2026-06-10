@@ -22,5 +22,7 @@ export {
   activateCustodial,
   createAndActivateCustodial, ensureMasterKey, syncHistory,
   getActiveCustodialConfig,
+  rehydrate,
 } from './walletProvider';
 export { createCustodialAccount } from './backends/custodialProvision';
+export { clearPersistedBackends } from './backendPersist';

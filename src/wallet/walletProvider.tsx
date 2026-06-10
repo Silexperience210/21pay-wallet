@@ -6,6 +6,7 @@ import type { WalletBackend } from './WalletBackend';
 import type { CustodialLnbitsConfig } from './lnbitsConfig';
 import { CustodialLnbits } from './backends/custodialLnbits';
 import { createCustodialAccount } from './backends/custodialProvision';
+import { persistCustodialConfig, loadPersistedCustodialConfig } from './backendPersist';
 import { useWalletStore, insertTx } from '../core/state';
 import { cryptoSelfTest, generateMnemonic, storeMnemonic, hasMnemonic } from '../core/keys';
 
@@ -56,6 +57,20 @@ export async function ensureMasterKey(): Promise<void> {
 export async function createAndActivateCustodial(opts?: { name?: string }): Promise<WalletBackend> {
   await ensureMasterKey(); // master identity key exists before any account is opened
   const config = await createCustodialAccount(opts);
+  const backend = activateCustodial(config);
+  // Persist so the wallet survives an app restart — without this, every relaunch
+  // shows onboarding and a second tap would orphan this freshly-funded wallet.
+  await persistCustodialConfig(config);
+  return backend;
+}
+
+/** Re-activate the persisted wallet on app launch. Returns the active backend, or
+ *  null if no wallet was ever persisted (→ caller shows onboarding). Never throws;
+ *  a storage hiccup degrades to onboarding rather than crashing the launch. */
+export async function rehydrate(): Promise<WalletBackend | null> {
+  if (active) return active;
+  const config = await loadPersistedCustodialConfig().catch(() => null);
+  if (!config) return null;
   return activateCustodial(config);
 }
 
