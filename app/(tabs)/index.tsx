@@ -12,7 +12,7 @@ import {
   BackupBanner,
   theme,
 } from '@/ui';
-import { useWallet, createAndActivateCustodial } from '@/wallet';
+import { useWallet, createAndActivateCustodial, syncHistory } from '@/wallet';
 import { fetchSatFiatRate } from '@/wallet/price';
 import { useWalletStore } from '@/core/state';
 import { t } from '@/i18n';
@@ -36,6 +36,7 @@ export default function Home(): React.ReactElement {
         lightningSat: b.lightningSat,
         onchainSat: b.onchainSat,
       });
+      await syncHistory().catch(() => {});
       hydrateHistory(activeBackendKind);
     } catch {
       /* keep last known balance */

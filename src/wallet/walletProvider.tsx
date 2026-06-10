@@ -6,7 +6,7 @@ import type { WalletBackend } from './WalletBackend';
 import type { CustodialLnbitsConfig } from './lnbitsConfig';
 import { CustodialLnbits } from './backends/custodialLnbits';
 import { createCustodialAccount } from './backends/custodialProvision';
-import { useWalletStore } from '../core/state';
+import { useWalletStore, insertTx } from '../core/state';
 import { cryptoSelfTest, generateMnemonic, storeMnemonic, hasMnemonic } from '../core/keys';
 
 // Module-scoped active backend holder (the running app has exactly one active wallet).
@@ -27,6 +27,15 @@ export function activateCustodial(config: CustodialLnbitsConfig): WalletBackend 
  *  provisioning flows (LNURLp claim) that need the wallet key. Null otherwise. */
 export function getActiveCustodialConfig(): CustodialLnbitsConfig | null {
   return activeCustodialConfig;
+}
+
+/** Pull the backend's transaction list into the local SQLite cache (upsert).
+ *  The Activity tab and the home 'Recent' strip read only from the cache, so
+ *  this is the single seam where remote history lands on-device. */
+export async function syncHistory(): Promise<void> {
+  if (!active) return;
+  const { txs } = await active.listTransactions();
+  for (const tx of txs) insertTx(active.kind, tx);
 }
 
 /** Generate-and-store the master mnemonic if (and only if) the vault is empty.

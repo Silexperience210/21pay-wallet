@@ -1,15 +1,23 @@
-import React, { useEffect } from 'react';
+import React, { useCallback } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { ScreenScaffold, TxList, EmptyState } from '@/ui';
 import { useWalletStore } from '@/core/state';
+import { syncHistory } from '@/wallet';
 
 export default function Activity(): React.ReactElement {
   const activeBackendKind = useWalletStore((s) => s.activeBackendKind);
   const txByBackend = useWalletStore((s) => s.txByBackend);
   const hydrateHistory = useWalletStore((s) => s.hydrateHistory);
 
-  useEffect(() => {
-    if (activeBackendKind) hydrateHistory(activeBackendKind);
-  }, [activeBackendKind, hydrateHistory]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!activeBackendKind) return;
+      hydrateHistory(activeBackendKind); // instant render from the local cache
+      syncHistory()
+        .then(() => hydrateHistory(activeBackendKind)) // then refresh from the backend
+        .catch(() => {});
+    }, [activeBackendKind, hydrateHistory]),
+  );
 
   const txs = activeBackendKind ? (txByBackend[activeBackendKind] ?? []) : [];
 

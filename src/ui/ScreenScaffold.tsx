@@ -73,7 +73,7 @@ export function ScreenScaffold({
         >
           {title ? <Text style={styles.title}>{title}</Text> : null}
           {scroll ? (
-            <ScrollView style={styles.body} contentContainerStyle={styles.scrollContent}>
+            <ScrollView style={styles.body} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
               {children}
             </ScrollView>
           ) : (
