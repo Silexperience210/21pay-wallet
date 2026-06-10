@@ -1,7 +1,7 @@
 // Receive modal — WALLET-01 (Lightning invoice) + WALLET-05 (on-chain address).
 // Lightning: optional amount/memo → createInvoice → QR + copy. On-chain tab is shown
 // only when the active backend exposes the capability. Never renders keys.
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -13,9 +13,11 @@ import {
   AmountInput,
   InvoiceCard,
   OnchainAddressCard,
+  PaymentStatusSheet,
   theme,
 } from '@/ui';
 import { useWallet } from '@/wallet';
+import type { PaymentStatus } from '@/wallet';
 import { t } from '@/i18n';
 
 type Tab = 'ln' | 'onchain';
@@ -28,6 +30,8 @@ export default function ReceiveScreen(): React.ReactElement {
   const [amountSat, setAmountSat] = useState<number | null>(null);
   const [memo, setMemo] = useState('');
   const [invoice, setInvoice] = useState<string | null>(null);
+  const [paymentHash, setPaymentHash] = useState<string | null>(null);
+  const [paid, setPaid] = useState(false);
   const [address, setAddress] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -41,14 +45,43 @@ export default function ReceiveScreen(): React.ReactElement {
     setBusy(true);
     setErr(null);
     try {
-      const { bolt11 } = await wallet.createInvoice(amountSat, memo || undefined);
+      const { bolt11, paymentHash: hash } = await wallet.createInvoice(amountSat, memo || undefined);
       setInvoice(bolt11);
+      setPaymentHash(hash ?? null);
+      setPaid(false);
     } catch {
       setErr(t('receive.backendErr'));
     } finally {
       setBusy(false);
     }
   };
+
+  // Watch the displayed invoice for settlement (~10 min at a 3 s cadence) so the
+  // success animation fires the moment the payment lands. Cancelled on unmount.
+  useEffect(() => {
+    if (!invoice || !paymentHash || !wallet.reconcile) return;
+    let cancelled = false;
+    let status: PaymentStatus = 'pending';
+    (async () => {
+      for (let i = 0; i < 200 && !cancelled; i++) {
+        try {
+          status = await wallet.reconcile!(paymentHash, status);
+        } catch {
+          /* transient backend hiccup — keep watching */
+        }
+        if (cancelled) return;
+        if (status === 'settled') {
+          setPaid(true);
+          return;
+        }
+        if (status === 'failed' || status === 'expired') return;
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [invoice, paymentHash, wallet]);
 
   const showAddress = async () => {
     if (!wallet.getOnchainAddress) return;
@@ -121,6 +154,14 @@ export default function ReceiveScreen(): React.ReactElement {
       )}
 
       {err ? <Text style={styles.err}>{err}</Text> : null}
+
+      {paid ? (
+        <PaymentStatusSheet
+          status="settled"
+          detail={amountSat ? `+${amountSat} sats` : undefined}
+          onClose={() => router.back()}
+        />
+      ) : null}
     </ScreenScaffold>
   );
 }

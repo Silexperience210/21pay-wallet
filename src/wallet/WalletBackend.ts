@@ -8,7 +8,7 @@ export interface WalletBackend {
   readonly capabilities: WalletCapabilities;
 
   getBalance(): Promise<{ lightningSat: number; onchainSat?: number }>;
-  createInvoice(amountSat: number, memo?: string): Promise<{ bolt11: string }>;
+  createInvoice(amountSat: number, memo?: string): Promise<{ bolt11: string; paymentHash?: string }>;
   payInvoice(bolt11: string): Promise<{ preimage: string; feeSat: number; paymentHash?: string }>;
   payLnAddress(addr: string, amountSat: number): Promise<{ preimage: string; paymentHash?: string }>;
 

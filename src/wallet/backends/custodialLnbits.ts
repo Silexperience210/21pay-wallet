@@ -24,7 +24,7 @@ export class CustodialLnbits implements WalletBackend {
     return { lightningSat: Math.floor((res.data.balance ?? 0) / 1000) }; // msat → sat
   }
 
-  async createInvoice(amountSat: number, memo?: string): Promise<{ bolt11: string }> {
+  async createInvoice(amountSat: number, memo?: string): Promise<{ bolt11: string; paymentHash?: string }> {
     const res = await httpRequest<{ payment_hash: string; payment_request: string }>({
       baseUrl: this.cfg.baseUrl,
       path: '/api/v1/payments',
@@ -32,7 +32,7 @@ export class CustodialLnbits implements WalletBackend {
       apiKey: this.cfg.invoiceKey,
       body: { out: false, amount: amountSat, memo: memo ?? '' },
     });
-    return { bolt11: res.data.payment_request };
+    return { bolt11: res.data.payment_request, paymentHash: res.data.payment_hash };
   }
 
   async payInvoice(bolt11: string): Promise<{ preimage: string; feeSat: number; paymentHash?: string }> {

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { View, Text, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import {
@@ -40,6 +41,13 @@ export default function Home(): React.ReactElement {
       /* keep last known balance */
     }
   }, [activeBackendKind, setBalance, hydrateHistory]);
+
+  // Refresh whenever the tab regains focus (e.g. returning from Receive after a payment).
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
 
   useEffect(() => {
     refresh();
