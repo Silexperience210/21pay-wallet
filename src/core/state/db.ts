@@ -117,6 +117,13 @@ export function updateTxStatus(id: string, status: PaymentStatus): void {
   conn().runSync(`UPDATE wallet_tx SET status = ? WHERE id = ?`, [status, id]);
 }
 
+/** Drop all cached transactions for a backend kind. Used when the active wallet changes
+ *  so a fresh/different wallet never inherits a previous wallet's history (which would
+ *  show a balance/history mismatch — e.g. orphaned-wallet txs lingering after a re-create). */
+export function clearTxByBackend(backendKind: BackendKind): void {
+  conn().runSync(`DELETE FROM wallet_tx WHERE backend_kind = ?`, [backendKind]);
+}
+
 // --- nwc_connections (D-02/D-04/D-05): non-secret metadata only ---
 
 export interface NwcConnectionRow {

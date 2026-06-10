@@ -17,11 +17,32 @@ import {
   persistActiveBackendKind,
   loadActiveBackendKind,
 } from './backendPersist';
-import { useWalletStore, insertTx } from '../core/state';
+import { useWalletStore, insertTx, getPref, setPref, clearTxByBackend } from '../core/state';
 import { cryptoSelfTest, generateMnemonic, storeMnemonic, hasMnemonic, loadSparkSeed } from '../core/keys';
 
 // Local Spark data directory. 04-05 wires the real expo-file-system documentDirectory.
 const SPARK_STORAGE_DIR = 'spark';
+
+// Non-secret one-way change-token over a wallet credential. Detects when the ACTIVE
+// custodial wallet differs from the one the local tx cache belongs to, so a fresh or
+// re-created wallet never shows a previous wallet's history beside a 0 balance (the
+// orphaned-wallet mismatch). Reveals nothing usable about the key. syncHistory refills
+// the real history from the live backend after the stale cache is cleared.
+function walletChangeToken(key: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16);
+}
+
+function dropStaleHistoryIfWalletChanged(token: string): void {
+  if (getPref('wallet.fp.custodial-lnbits') !== token) {
+    clearTxByBackend('custodial-lnbits'); // different/fresh wallet → drop stale txs
+    setPref('wallet.fp.custodial-lnbits', token);
+  }
+}
 
 // Module-scoped active backend holder (the running app has exactly one active wallet).
 let active: WalletBackend | null = null;
@@ -36,6 +57,9 @@ export function activateCustodial(config: CustodialLnbitsConfig): WalletBackend 
   active = new CustodialLnbits(config);
   activeCustodialConfig = config;
   activeSparkConfig = null;
+  // Clear stale history if this is a different wallet than the cache belongs to, so the
+  // balance and history always describe the SAME wallet (fixes the orphaned-wallet mismatch).
+  dropStaleHistoryIfWalletChanged(walletChangeToken(config.invoiceKey));
   useWalletStore.getState().setActiveBackend('custodial-lnbits'); // badge on (ONBD-05)
   void persistActiveBackendKind('custodial-lnbits'); // D-05: remember which backend is active
   return active;
