@@ -20,7 +20,7 @@ export {
   WalletProvider,
   useWallet,
   activateCustodial,
-  createAndActivateCustodial,
+  createAndActivateCustodial, ensureMasterKey,
   getActiveCustodialConfig,
 } from './walletProvider';
 export { createCustodialAccount } from './backends/custodialProvision';

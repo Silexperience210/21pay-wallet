@@ -16,6 +16,7 @@ import {
 } from '@/core/keys';
 import type { QuizChallenge } from '@/core/keys/backup';
 import { setPref } from '@/core/state';
+import { ensureMasterKey } from '@/wallet';
 import { t } from '@/i18n';
 
 type Step = 'hidden' | 'revealed' | 'quiz' | 'done';
@@ -37,6 +38,7 @@ export default function BackupScreen(): React.ReactElement {
   const reveal = async () => {
     setErr(null);
     try {
+      await ensureMasterKey(); // heals installs onboarded before key generation was wired
       const mnemonic = await loadMnemonic(); // keystore/biometric-gated in the vault
       setWords(mnemonic.trim().split(/\s+/));
       setStep('revealed');

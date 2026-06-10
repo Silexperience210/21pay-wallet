@@ -7,6 +7,7 @@ import type { CustodialLnbitsConfig } from './lnbitsConfig';
 import { CustodialLnbits } from './backends/custodialLnbits';
 import { createCustodialAccount } from './backends/custodialProvision';
 import { useWalletStore } from '../core/state';
+import { cryptoSelfTest, generateMnemonic, storeMnemonic, hasMnemonic } from '../core/keys';
 
 // Module-scoped active backend holder (the running app has exactly one active wallet).
 let active: WalletBackend | null = null;
@@ -28,8 +29,23 @@ export function getActiveCustodialConfig(): CustodialLnbitsConfig | null {
   return activeCustodialConfig;
 }
 
+/** Generate-and-store the master mnemonic if (and only if) the vault is empty.
+ *  Gated by the crypto self-test (CLAUDE.md constraint 4: prove the CSPRNG +
+ *  sign round-trip on the device before generating any live key). Idempotent:
+ *  the non-secret presence marker prevents ever overwriting an existing key. */
+export async function ensureMasterKey(): Promise<void> {
+  if (await hasMnemonic()) return;
+  const st = cryptoSelfTest();
+  if (!st.ok) {
+    throw new Error(`crypto self-test failed: ${st.details.join('; ')}`);
+  }
+  const mnemonic = generateMnemonic(128);
+  await storeMnemonic(mnemonic);
+}
+
 /** ONBD-01 happy path: open a fresh 21pay account then activate it. */
 export async function createAndActivateCustodial(opts?: { name?: string }): Promise<WalletBackend> {
+  await ensureMasterKey(); // master identity key exists before any account is opened
   const config = await createCustodialAccount(opts);
   return activateCustodial(config);
 }

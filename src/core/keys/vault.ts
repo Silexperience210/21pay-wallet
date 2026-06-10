@@ -16,6 +16,7 @@ import type { SecurityLevel, VaultStatus } from './types';
 const DEK_SERVICE = 'org.pay21.wallet.dek';
 const SECURE_STORE_SERVICE = 'org.pay21.wallet.vault';
 const CIPHERTEXT_KEY = 'mnemonic.ciphertext';
+const PRESENCE_KEY = 'mnemonic.present';
 
 function csprng(out: Uint8Array): Uint8Array {
   const wc = (globalThis as { crypto?: { getRandomValues?: (a: Uint8Array) => Uint8Array } }).crypto;
@@ -66,6 +67,12 @@ export async function storeMnemonic(mnemonic: string): Promise<SecurityLevel> {
       authenticationPrompt: 'Unlock 21pay',
       keychainService: SECURE_STORE_SERVICE,
     });
+    // Non-secret presence marker (no auth gate): lets ensureMasterKey() check the
+    // vault without triggering a biometric prompt, and guards against overwriting
+    // an existing master key.
+    await SecureStore.setItemAsync(PRESENCE_KEY, '1', {
+      keychainService: SECURE_STORE_SERVICE,
+    });
     const dekB64 = Buffer.from(dek).toString('base64');
     try {
       // Attempt StrongBox / hardware-backed first.
@@ -85,6 +92,14 @@ export async function storeMnemonic(mnemonic: string): Promise<SecurityLevel> {
   }
   const level = await Keychain.getSecurityLevel({ accessControl: dekBase.accessControl });
   return normalizeLevel(level);
+}
+
+/** Prompt-free vault presence check (reads only the non-secret marker). */
+export async function hasMnemonic(): Promise<boolean> {
+  const marker = await SecureStore.getItemAsync(PRESENCE_KEY, {
+    keychainService: SECURE_STORE_SERVICE,
+  });
+  return marker === '1';
 }
 
 /** Biometric-gated load + decrypt. Throws if the vault is empty. */
