@@ -12,4 +12,13 @@ export type { KeyIdentity, SecurityLevel, VaultStatus } from './types';
 export { signEvent } from './signer';
 export { cryptoSelfTest } from './selftest';
 export { storeMnemonic, loadMnemonic, hasMnemonic, detectSecurityLevel } from './vault';
+export {
+  storeNwcSecret,
+  loadNwcSecret,
+  deleteNwcSecret,
+  storeSparkSeed,
+  loadSparkSeed,
+  hasSparkSeed,
+  deleteSparkSeed,
+} from './vault';
 export { guardSecretScreen, releaseSecretScreen, restore, buildQuiz, checkQuiz } from './backup';

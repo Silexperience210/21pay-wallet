@@ -18,6 +18,17 @@ const SECURE_STORE_SERVICE = 'org.pay21.wallet.vault';
 const CIPHERTEXT_KEY = 'mnemonic.ciphertext';
 const PRESENCE_KEY = 'mnemonic.present';
 
+// Named-secret namespacing (Phase 4 D-04/D-12). Each named secret gets its OWN DEK entry
+// (distinct keychain service) so it never overwrites the mnemonic DEK; ciphertexts share
+// the SECURE_STORE_SERVICE under distinct keys. NWC per-connection secrets and the dedicated
+// Spark seed are stored this way — biometric-gated, AES-256-GCM, never in SQLite (anti-pattern 4).
+const nwcDekService = (id: string): string => `org.pay21.wallet.dek.nwc.${id}`;
+const nwcCtKey = (id: string): string => `nwc.secret.${id}`;
+const nwcPresenceKey = (id: string): string => `nwc.present.${id}`;
+const SPARK_DEK_SERVICE = 'org.pay21.wallet.dek.spark';
+const SPARK_CT_KEY = 'spark.seed';
+const SPARK_PRESENCE_KEY = 'spark.present';
+
 function csprng(out: Uint8Array): Uint8Array {
   const wc = (globalThis as { crypto?: { getRandomValues?: (a: Uint8Array) => Uint8Array } }).crypto;
   if (!wc?.getRandomValues) throw new Error('vault: no native CSPRNG available');
@@ -116,6 +127,93 @@ export async function loadMnemonic(): Promise<string> {
   } finally {
     dek.fill(0);
   }
+}
+
+// --- Named secrets (Phase 4) — same biometric DEK + AES-256-GCM path as the mnemonic,
+//     namespaced so each secret is independent and individually revocable (D-04). ---
+
+async function putNamedSecret(
+  dekService: string,
+  ctKey: string,
+  presenceKey: string,
+  value: string,
+): Promise<void> {
+  const dek = generateDek();
+  try {
+    const ciphertextB64 = encryptMnemonic(value, dek); // generic string encryptor (iv||ct base64)
+    await SecureStore.setItemAsync(ctKey, ciphertextB64, {
+      requireAuthentication: true,
+      authenticationPrompt: 'Unlock 21pay',
+      keychainService: SECURE_STORE_SERVICE,
+    });
+    await SecureStore.setItemAsync(presenceKey, '1', { keychainService: SECURE_STORE_SERVICE });
+    const dekB64 = Buffer.from(dek).toString('base64');
+    try {
+      await Keychain.setGenericPassword('dek', dekB64, {
+        ...dekBase,
+        service: dekService,
+        securityLevel: Keychain.SECURITY_LEVEL.SECURE_HARDWARE,
+      });
+    } catch {
+      await Keychain.setGenericPassword('dek', dekB64, {
+        ...dekBase,
+        service: dekService,
+        securityLevel: Keychain.SECURITY_LEVEL.ANY,
+      });
+    }
+  } finally {
+    dek.fill(0);
+  }
+}
+
+async function getNamedSecret(dekService: string, ctKey: string): Promise<string | null> {
+  const dekEntry = await Keychain.getGenericPassword({ service: dekService });
+  if (!dekEntry) return null;
+  const ciphertextB64 = await SecureStore.getItemAsync(ctKey, { keychainService: SECURE_STORE_SERVICE });
+  if (!ciphertextB64) return null;
+  const dek = new Uint8Array(Buffer.from(dekEntry.password, 'base64'));
+  try {
+    return decryptMnemonic(ciphertextB64, dek);
+  } finally {
+    dek.fill(0);
+  }
+}
+
+async function removeNamedSecret(dekService: string, ctKey: string, presenceKey: string): Promise<void> {
+  await SecureStore.deleteItemAsync(ctKey, { keychainService: SECURE_STORE_SERVICE });
+  await SecureStore.deleteItemAsync(presenceKey, { keychainService: SECURE_STORE_SERVICE });
+  await Keychain.resetGenericPassword({ service: dekService });
+}
+
+/** Store a per-connection NWC secret/URI (D-04). Opaque material — not a raw identity key. */
+export async function storeNwcSecret(id: string, secret: string): Promise<void> {
+  await putNamedSecret(nwcDekService(id), nwcCtKey(id), nwcPresenceKey(id), secret);
+}
+/** Load a per-connection NWC secret/URI (biometric-gated), or null if absent. */
+export async function loadNwcSecret(id: string): Promise<string | null> {
+  return getNamedSecret(nwcDekService(id), nwcCtKey(id));
+}
+/** Revoke a connection's vault secret (D-04). */
+export async function deleteNwcSecret(id: string): Promise<void> {
+  await removeNamedSecret(nwcDekService(id), nwcCtKey(id), nwcPresenceKey(id));
+}
+
+/** Store the DEDICATED Spark seed (D-12 — separate from the identity master seed). */
+export async function storeSparkSeed(mnemonic: string): Promise<void> {
+  await putNamedSecret(SPARK_DEK_SERVICE, SPARK_CT_KEY, SPARK_PRESENCE_KEY, mnemonic);
+}
+/** Load the dedicated Spark seed (biometric-gated), or null if not provisioned. */
+export async function loadSparkSeed(): Promise<string | null> {
+  return getNamedSecret(SPARK_DEK_SERVICE, SPARK_CT_KEY);
+}
+/** Prompt-free presence check for the Spark seed (reads only the non-secret marker). */
+export async function hasSparkSeed(): Promise<boolean> {
+  const marker = await SecureStore.getItemAsync(SPARK_PRESENCE_KEY, { keychainService: SECURE_STORE_SERVICE });
+  return marker === '1';
+}
+/** Forget the Spark seed (self-hosted disconnect). */
+export async function deleteSparkSeed(): Promise<void> {
+  await removeNamedSecret(SPARK_DEK_SERVICE, SPARK_CT_KEY, SPARK_PRESENCE_KEY);
 }
 
 /** Honest runtime security-level probe. */
