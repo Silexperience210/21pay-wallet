@@ -29,7 +29,18 @@ export function openDb(): DB {
       value TEXT
     )`,
   );
-  db.execSync('PRAGMA user_version = 2'); // migration ordering slot
+  // Named NWC connections (D-02). NON-SECRET metadata ONLY — the per-connection
+  // secret/URI lives in the Vault (CLAUDE.md anti-pattern 4), never in this table.
+  db.execSync(
+    `CREATE TABLE IF NOT EXISTS nwc_connections (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      wallet_pubkey TEXT,
+      relay_url TEXT,
+      is_active INTEGER DEFAULT 0
+    )`,
+  );
+  db.execSync('PRAGMA user_version = 3'); // migration ordering slot (3 = + nwc_connections)
   return db;
 }
 
@@ -104,4 +115,45 @@ export function listPending(backendKind: BackendKind): WalletTx[] {
 
 export function updateTxStatus(id: string, status: PaymentStatus): void {
   conn().runSync(`UPDATE wallet_tx SET status = ? WHERE id = ?`, [status, id]);
+}
+
+// --- nwc_connections (D-02/D-04/D-05): non-secret metadata only ---
+
+export interface NwcConnectionRow {
+  id: string;
+  name: string;
+  wallet_pubkey: string;
+  relay_url: string;
+  is_active: number;
+}
+
+/** Insert or update a connection's metadata. is_active is preserved across updates
+ *  (only setActiveNwcConnectionRow changes it) — new rows default inactive. */
+export function upsertNwcConnectionRow(row: {
+  id: string;
+  name: string;
+  wallet_pubkey: string;
+  relay_url: string;
+}): void {
+  conn().runSync(
+    `INSERT INTO nwc_connections (id, name, wallet_pubkey, relay_url, is_active)
+     VALUES (?, ?, ?, ?, 0)
+     ON CONFLICT(id) DO UPDATE SET name = excluded.name, wallet_pubkey = excluded.wallet_pubkey, relay_url = excluded.relay_url`,
+    [row.id, row.name, row.wallet_pubkey, row.relay_url],
+  );
+}
+
+export function listNwcConnectionRows(): NwcConnectionRow[] {
+  return conn().getAllSync(`SELECT * FROM nwc_connections ORDER BY name`) as NwcConnectionRow[];
+}
+
+export function deleteNwcConnectionRow(id: string): void {
+  conn().runSync(`DELETE FROM nwc_connections WHERE id = ?`, [id]);
+}
+
+/** D-02: exactly one active connection. Clears all flags, then sets the chosen one —
+ *  never deletes any other config (D-05 persist-all). */
+export function setActiveNwcConnectionRow(id: string): void {
+  conn().runSync(`UPDATE nwc_connections SET is_active = 0`);
+  conn().runSync(`UPDATE nwc_connections SET is_active = 1 WHERE id = ?`, [id]);
 }
