@@ -2,10 +2,11 @@
 // until they confirm. Confirmation is a non-secret flag in prefs (NOT a key). The
 // real backup quiz lands in the Phase-1 security checkpoint; until then "I've written
 // it down" sets the flag so the banner stops nagging. Hidden once confirmed.
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { getPref, setPref } from '@/core/state';
+import { router, useFocusEffect } from 'expo-router';
+import { getPref } from '@/core/state';
 import { t } from '@/i18n';
 import { theme } from './theme';
 
@@ -14,23 +15,21 @@ const FLAG = 'backupConfirmed';
 export function BackupBanner(): React.ReactElement | null {
   const [confirmed, setConfirmed] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    try {
-      setConfirmed(getPref(FLAG) === '1');
-    } catch {
-      setConfirmed(true); // never block the UI on a prefs read error
-    }
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      try {
+        setConfirmed(getPref(FLAG) === '1');
+      } catch {
+        setConfirmed(true); // never block the UI on a prefs read error
+      }
+    }, []),
+  );
 
   if (confirmed !== false) return null;
 
+  // The flag is now set by the verification quiz in /backup (SEC-05), not here.
   const confirm = () => {
-    try {
-      setPref(FLAG, '1');
-    } catch {
-      /* best-effort */
-    }
-    setConfirmed(true);
+    router.push('/backup');
   };
 
   return (

@@ -2,7 +2,9 @@
 // live availability/validation, then view it in a copyable card. The claimed address
 // is public and persisted in secure-store; NO private key is ever stored or rendered.
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { router } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import {
   ScreenScaffold,
   PrimaryButton,
@@ -95,6 +97,15 @@ export default function Identity(): React.ReactElement {
     return (
       <ScreenScaffold title={t('identity.title')} scroll>
         <LnAddressCard lnAddress={claimed} />
+      <Pressable
+        onPress={() => router.push('/backup')}
+        style={styles.seedRow}
+        accessibilityRole="button"
+      >
+        <Feather name="key" size={16} color={theme.color.accent} />
+        <Text style={styles.seedRowText}>{t('identity.viewSeed')}</Text>
+        <Feather name="chevron-right" size={16} color={theme.color.textMuted} />
+      </Pressable>
       </ScreenScaffold>
     );
   }
@@ -115,11 +126,37 @@ export default function Identity(): React.ReactElement {
         />
         {err ? <Text style={styles.err}>{err}</Text> : null}
       </View>
+      <Pressable
+        onPress={() => router.push('/backup')}
+        style={styles.seedRow}
+        accessibilityRole="button"
+      >
+        <Feather name="key" size={16} color={theme.color.accent} />
+        <Text style={styles.seedRowText}>{t('identity.viewSeed')}</Text>
+        <Feather name="chevron-right" size={16} color={theme.color.textMuted} />
+      </Pressable>
     </ScreenScaffold>
   );
 }
 
 const styles = StyleSheet.create({
+  seedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.md,
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.space.lg,
+    paddingVertical: theme.space.md,
+    marginTop: theme.space.lg,
+  },
+  seedRowText: {
+    flex: 1,
+    fontFamily: theme.font.label.fontFamily,
+    fontSize: 14,
+    color: theme.color.text,
+  },
   form: { gap: theme.space.xl, marginTop: theme.space.lg },
   err: { fontFamily: theme.font.body.fontFamily, fontSize: 13, color: theme.color.destructive, textAlign: 'center' },
 });

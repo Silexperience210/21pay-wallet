@@ -33,10 +33,15 @@ export default function ReceiveScreen(): React.ReactElement {
   const [err, setErr] = useState<string | null>(null);
 
   const createInvoice = async () => {
+    // LNbits rejects zero-amount invoices (the origin even 520s) — validate first.
+    if (!amountSat || amountSat < 1) {
+      setErr(t('receive.amountRequired'));
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {
-      const { bolt11 } = await wallet.createInvoice(amountSat ?? 0, memo || undefined);
+      const { bolt11 } = await wallet.createInvoice(amountSat, memo || undefined);
       setInvoice(bolt11);
     } catch {
       setErr(t('receive.backendErr'));
