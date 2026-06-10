@@ -17,6 +17,9 @@
       "distribution": "internal",
       "credentialsSource": "local",
       "node": "20.18.0",
+      "env": {
+        "EXPO_PUBLIC_LNBITS_URL": "https://21pay.org"
+      },
       "android": {
         "buildType": "apk"
       }
@@ -25,6 +28,9 @@
       "autoIncrement": true,
       "credentialsSource": "local",
       "node": "20.18.0",
+      "env": {
+        "EXPO_PUBLIC_LNBITS_URL": "https://21pay.org"
+      },
       "android": {
         "buildType": "app-bundle"
       }
