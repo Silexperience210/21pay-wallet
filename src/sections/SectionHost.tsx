@@ -6,7 +6,7 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import type { SectionCapabilities } from './capabilities';
 import { useWallet } from '../wallet';
-import { loadMnemonic } from '../core/keys';
+import { loadMnemonic, signNip98Auth, deriveNostrIdentity } from '../core/keys';
 import { signLnurlAuth } from '../core/keys/lnurlAuth';
 
 const SectionCtx = createContext<SectionCapabilities | null>(null);
@@ -28,6 +28,16 @@ export function SectionHost({ children }: { children: React.ReactNode }): React.
           const { bolt11 } = await wallet.createInvoice(amountSat, memo);
           return { bolt11 };
         },
+        // Capability-gated passthrough (MINE-04): present only when the active
+        // backend implements it — sections feature-detect via optional chaining.
+        ...(wallet.getOnchainAddress
+          ? {
+              async getOnchainAddress() {
+                const { address } = await wallet.getOnchainAddress!();
+                return { address };
+              },
+            }
+          : {}),
       },
       signer: {
         async signLnurlAuth(k1Hex: string, domain: string) {
@@ -35,6 +45,16 @@ export function SectionHost({ children }: { children: React.ReactNode }): React.
           // the LUD-04 { sig, key } result crosses into the section.
           const mnemonic = await loadMnemonic();
           return signLnurlAuth(mnemonic, k1Hex, domain);
+        },
+        async signNip98(opts: { url: string; method: string; challenge: string }) {
+          // Same discipline: mnemonic consumed inside Core, only the SIGNED
+          // (public) NIP-98 event crosses the seam (Phase 6 BitRent login).
+          const mnemonic = await loadMnemonic();
+          return signNip98Auth(mnemonic, opts);
+        },
+        async getNostrPubkey() {
+          const mnemonic = await loadMnemonic();
+          return deriveNostrIdentity(mnemonic).pubkeyHex; // PUBLIC identity only
         },
       },
     }),

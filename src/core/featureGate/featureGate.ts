@@ -11,7 +11,7 @@ const GATE_TIMEOUT_MS = 4000;
 // successful fetch — so isFeatureEnabled is fail-closed before any network call.
 let cachedGate: FeatureGate = { ...DEFAULT_GATE };
 
-const KNOWN_FLAGS: FeatureName[] = ['casino', 'custodial'];
+const KNOWN_FLAGS: FeatureName[] = ['casino', 'custodial', 'mineurs'];
 
 /**
  * Strict validation: read only known keys, and accept a flag ONLY when it is

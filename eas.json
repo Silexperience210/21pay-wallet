@@ -20,7 +20,8 @@
       "env": {
         "EXPO_PUBLIC_LNBITS_URL": "https://21pay.org",
         "EXPO_PUBLIC_FEATURE_GATE_URL": "https://satoshi-casino21.vercel.app/gate.json",
-        "EXPO_PUBLIC_CASINO_ORIGIN": "https://satoshi-casino21.vercel.app"
+        "EXPO_PUBLIC_CASINO_ORIGIN": "https://satoshi-casino21.vercel.app",
+        "EXPO_PUBLIC_BITRENT_ORIGIN": "https://bitrent.vercel.app"
       },
       "android": {
         "buildType": "apk"
@@ -33,7 +34,8 @@
       "env": {
         "EXPO_PUBLIC_LNBITS_URL": "https://21pay.org",
         "EXPO_PUBLIC_FEATURE_GATE_URL": "https://satoshi-casino21.vercel.app/gate.json",
-        "EXPO_PUBLIC_CASINO_ORIGIN": "https://satoshi-casino21.vercel.app"
+        "EXPO_PUBLIC_CASINO_ORIGIN": "https://satoshi-casino21.vercel.app",
+        "EXPO_PUBLIC_BITRENT_ORIGIN": "https://bitrent.vercel.app"
       },
       "android": {
         "buildType": "app-bundle"

@@ -28,6 +28,7 @@ export default function Home(): React.ReactElement {
   // Server feature gate (DIST-02): the Casino entry renders only when the validated
   // gate enables it — fail-closed before/without a successful fetch.
   const [casinoEnabled, setCasinoEnabled] = useState(isFeatureEnabled('casino'));
+  const [minersEnabled, setMinersEnabled] = useState(isFeatureEnabled('mineurs'));
 
   const refresh = useCallback(async () => {
     if (!activeBackendKind) return;
@@ -58,8 +59,11 @@ export default function Home(): React.ReactElement {
       .then((r) => setRate(r.ratePerSat))
       .catch(() => {});
     fetchFeatureGate()
-      .then(() => setCasinoEnabled(isFeatureEnabled('casino')))
-      .catch(() => {}); // fail-closed: entry stays hidden
+      .then(() => {
+        setCasinoEnabled(isFeatureEnabled('casino'));
+        setMinersEnabled(isFeatureEnabled('mineurs'));
+      })
+      .catch(() => {}); // fail-closed: entries stay hidden
   }, [refresh]);
 
   // No wallet yet → the sovereignty ladder is the SINGLE onboarding path (D-08).
@@ -96,9 +100,14 @@ export default function Home(): React.ReactElement {
       <Text style={styles.eyebrow}>{t('home.recent')}</Text>
       <TxList txs={txs} compact />
       <View style={styles.spacer} />
-      {/* Sections entry (UX-02), server-gated (DIST-02) — hidden unless the casino flag is ON. */}
+      {/* Sections entries (UX-02), server-gated per flag (DIST-02) — fail-closed hidden. */}
       {casinoEnabled ? (
         <SecondaryButton label={t('casino.entry')} onPress={() => router.push('/(sections)/casino')} />
+      ) : null}
+      {minersEnabled ? (
+        <View style={styles.sectionGap}>
+          <SecondaryButton label={t('miners.entry')} onPress={() => router.push('/(sections)/miners')} />
+        </View>
       ) : null}
     </ScreenScaffold>
   );
@@ -115,4 +124,5 @@ const styles = StyleSheet.create({
     marginBottom: theme.space.sm,
   },
   spacer: { height: theme.space.lg },
+  sectionGap: { marginTop: theme.space.md },
 });
