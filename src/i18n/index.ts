@@ -125,6 +125,26 @@ const en: Dict = {
   'pay.expired.title': 'Invoice expired',
   'pay.expired.body': 'This invoice is no longer valid. Ask for a fresh one.',
   'pay.done': 'Done',
+  // Casino section
+  'casino.entry': '🎰  Casino',
+  'casino.lobby.title': 'Casino',
+  'casino.connecting': 'Connecting with your Lightning identity…',
+  'casino.unavailable': 'Casino unavailable',
+  'casino.backendErr': 'The casino is unreachable — try again in a moment.',
+  'casino.wallet.title': 'Casino wallet',
+  'casino.balance': 'Casino balance',
+  'casino.deposit.title': 'Deposit',
+  'casino.deposit.cta': 'Deposit from my wallet',
+  'casino.deposit.min': 'Minimum {min} sats (Lightning routing fees).',
+  'casino.deposit.bounds': 'Amount must be between 1 000 and 100 000 sats.',
+  'casino.withdraw.title': 'Withdraw',
+  'casino.withdraw.cta': 'Withdraw to my wallet',
+  'casino.withdraw.note': 'The casino pays your invoice (1% fee reserve, min 10 sats).',
+  'casino.fair.title': 'Provably fair',
+  'casino.fair.serverSeed': 'Server seed hash',
+  'casino.fair.clientSeed': 'Client seed',
+  'casino.fair.nonce': 'Nonce',
+  'casino.fair.empty': 'No fairness data yet — play a round first.',
 };
 
 const fr: Dict = {
@@ -238,6 +258,26 @@ const fr: Dict = {
   'pay.expired.title': 'Invoice expirée',
   'pay.expired.body': 'Cette invoice n’est plus valide. Demandes-en une nouvelle.',
   'pay.done': 'Terminé',
+  // Casino section
+  'casino.entry': '🎰  Casino',
+  'casino.lobby.title': 'Casino',
+  'casino.connecting': 'Connexion avec ton identité Lightning…',
+  'casino.unavailable': 'Casino indisponible',
+  'casino.backendErr': 'Le casino est injoignable — réessaie dans un instant.',
+  'casino.wallet.title': 'Portefeuille casino',
+  'casino.balance': 'Solde Casino',
+  'casino.deposit.title': 'Déposer',
+  'casino.deposit.cta': 'Déposer depuis mon portefeuille',
+  'casino.deposit.min': 'Minimum {min} sats (frais de routage Lightning).',
+  'casino.deposit.bounds': 'Le montant doit être entre 1 000 et 100 000 sats.',
+  'casino.withdraw.title': 'Retirer',
+  'casino.withdraw.cta': 'Retirer vers mon portefeuille',
+  'casino.withdraw.note': 'Le casino paie ton invoice (réserve de frais 1 %, min 10 sats).',
+  'casino.fair.title': 'Provably fair',
+  'casino.fair.serverSeed': 'Hash du seed serveur',
+  'casino.fair.clientSeed': 'Seed client',
+  'casino.fair.nonce': 'Nonce',
+  'casino.fair.empty': 'Pas encore de données d’équité — joue une partie d’abord.',
 };
 
 const DICTS: Record<Lang, Dict> = { fr, en };

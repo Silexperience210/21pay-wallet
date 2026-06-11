@@ -80,4 +80,16 @@ describe('featureGate (fail-closed, spoof-resistant)', () => {
     const gate = await fetchFeatureGate();
     expect(gate).toEqual({ casino: false, custodial: false });
   });
+
+  // Phase 5 (DIST-02): the Casino section entry is driven by this exact gating.
+  it('casino flag off → the Casino section entry is hidden (fail-closed default)', () => {
+    expect(isFeatureEnabled('casino')).toBe(false); // no fetch yet → hidden
+  });
+
+  it('casino flag on (validated gate) → the Casino section entry is shown', async () => {
+    mockFetchResolve({ casino: true, custodial: false });
+    await fetchFeatureGate();
+    expect(isFeatureEnabled('casino')).toBe(true);
+    expect(isFeatureEnabled('custodial')).toBe(false); // gating is per-flag
+  });
 });

@@ -15,6 +15,7 @@ import {
 import { useWallet, createAndActivateCustodial, syncHistory } from '@/wallet';
 import { fetchSatFiatRate } from '@/wallet/price';
 import { useWalletStore } from '@/core/state';
+import { isFeatureEnabled, fetchFeatureGate } from '@/core/featureGate';
 import { t } from '@/i18n';
 
 export default function Home(): React.ReactElement {
@@ -26,6 +27,9 @@ export default function Home(): React.ReactElement {
   const [rate, setRate] = useState(0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Server feature gate (DIST-02): the Casino entry renders only when the validated
+  // gate enables it — fail-closed before/without a successful fetch.
+  const [casinoEnabled, setCasinoEnabled] = useState(isFeatureEnabled('casino'));
 
   const refresh = useCallback(async () => {
     if (!activeBackendKind) return;
@@ -55,6 +59,9 @@ export default function Home(): React.ReactElement {
     fetchSatFiatRate('EUR')
       .then((r) => setRate(r.ratePerSat))
       .catch(() => {});
+    fetchFeatureGate()
+      .then(() => setCasinoEnabled(isFeatureEnabled('casino')))
+      .catch(() => {}); // fail-closed: entry stays hidden
   }, [refresh]);
 
   const onboard = async () => {
@@ -104,7 +111,10 @@ export default function Home(): React.ReactElement {
       <Text style={styles.eyebrow}>{t('home.recent')}</Text>
       <TxList txs={txs} compact />
       <View style={styles.spacer} />
-      <SecondaryButton label={t('home.sections')} onPress={() => {}} />
+      {/* Sections entry (UX-02), server-gated (DIST-02) — hidden unless the casino flag is ON. */}
+      {casinoEnabled ? (
+        <SecondaryButton label={t('casino.entry')} onPress={() => router.push('/(sections)/casino')} />
+      ) : null}
     </ScreenScaffold>
   );
 }

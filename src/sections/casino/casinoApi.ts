@@ -26,6 +26,14 @@ export function hasSession(): boolean {
   return sessionCookie != null;
 }
 
+/** Opaque WebView source carrying the session cookie to the PINNED casino origin
+ *  (cookie-share, RESEARCH O-2). The screen passes this object straight to the
+ *  WebView — the cookie value never lands in section state or logs (T-05-11/15);
+ *  the origin guard keeps it off any other domain. */
+export function casinoWebViewSource(): { uri: string; headers: Record<string, string> } {
+  return { uri: CASINO_ORIGIN, headers: cookieHeaders() ?? {} };
+}
+
 function cookieHeaders(): Record<string, string> | undefined {
   return sessionCookie ? { Cookie: `session_id=${sessionCookie}` } : undefined;
 }

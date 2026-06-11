@@ -33,6 +33,7 @@ export default function RootLayout(): React.ReactElement {
             }}
           >
             <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="(sections)" />
             <Stack.Screen name="nfc" options={{ presentation: 'fullScreenModal' }} />
             <Stack.Screen name="receive" options={{ presentation: 'modal' }} />
             <Stack.Screen name="backup" options={{ presentation: 'modal' }} />
