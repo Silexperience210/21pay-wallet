@@ -22,3 +22,5 @@ export {
   deleteSparkSeed,
 } from './vault';
 export { guardSecretScreen, releaseSecretScreen, restore, buildQuiz, checkQuiz } from './backup';
+// LNURL-auth (LUD-04/05) casino-login primitive — returns {sig, key} only, never raw key bytes.
+export { signLnurlAuth, deriveLnurlAuthKey } from './lnurlAuth';
