@@ -32,5 +32,19 @@ export interface SectionCapabilities {
     signNip98(opts: { url: string; method: string; challenge: string }): Promise<SectionNip98Event>;
     /** The PUBLIC identity pubkey (hex) — needed to request auth challenges. */
     getNostrPubkey(): Promise<string>;
+    /** Sign a Hunch protocol event with the master identity (MARKET-03). The host
+     *  enforces a kind ALLOWLIST (orders/disputes/reputation) — sections can never
+     *  sign arbitrary kinds (no kind-0 metadata, no DMs — blast-radius). */
+    signHunchEvent(template: { kind: number; tags: string[][]; content: string }): Promise<SectionNip98Event>;
+  };
+  /** Small per-section persistence, host-namespaced. `set/get` = non-secret metadata
+   *  (SQLite prefs); `setSecret/getSecret` = secret material (expo-secure-store) —
+   *  e.g. per-position Cashu stake keys. Sections never touch core/state directly. */
+  store: {
+    get(key: string): Promise<string | null>;
+    set(key: string, value: string): Promise<void>;
+    getSecret(key: string): Promise<string | null>;
+    setSecret(key: string, value: string): Promise<void>;
+    deleteSecret(key: string): Promise<void>;
   };
 }

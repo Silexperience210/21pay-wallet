@@ -34,7 +34,7 @@ describe('featureGate (fail-closed, spoof-resistant)', () => {
   it('fails closed when the endpoint is unreachable', async () => {
     mockFetchReject(new Error('network down'));
     const gate = await fetchFeatureGate();
-    expect(gate).toEqual({ casino: false, custodial: false, mineurs: false });
+    expect(gate).toEqual({ casino: false, custodial: false, mineurs: false, markets: false });
     expect(isFeatureEnabled('casino')).toBe(false);
   });
 
@@ -78,7 +78,7 @@ describe('featureGate (fail-closed, spoof-resistant)', () => {
   it('fails closed when the gate URL env var is unset', async () => {
     delete process.env.EXPO_PUBLIC_FEATURE_GATE_URL;
     const gate = await fetchFeatureGate();
-    expect(gate).toEqual({ casino: false, custodial: false, mineurs: false });
+    expect(gate).toEqual({ casino: false, custodial: false, mineurs: false, markets: false });
   });
 
   // Phase 6 (DIST-02): the Mineurs section entry uses the same per-flag gating.

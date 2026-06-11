@@ -4,10 +4,22 @@
 // Raw key material never crosses: signLnurlAuth loads the mnemonic inside Core,
 // signs, zeroizes, and only { sig, key } reaches the section (SEC-04).
 import React, { createContext, useContext, useMemo } from 'react';
+import * as SecureStore from 'expo-secure-store';
 import type { SectionCapabilities } from './capabilities';
 import { useWallet } from '../wallet';
-import { loadMnemonic, signNip98Auth, deriveNostrIdentity } from '../core/keys';
+import { loadMnemonic, signNip98Auth, deriveNostrIdentity, signEvent } from '../core/keys';
+import { loadNostrPrivkeyBytes } from '../core/keys/derivation';
 import { signLnurlAuth } from '../core/keys/lnurlAuth';
+import { getPref, setPref } from '../core/state';
+
+// The ONLY kinds a section may have the identity sign (Hunch protocol write path:
+// orders / disputes / reputation). Never extend casually — this list is the seam's
+// blast-radius guard (no kind-0 metadata, no kind-4 DMs, no arbitrary notes).
+const HUNCH_SIGNABLE_KINDS = new Set([38888, 30890, 30891]);
+
+// Host-side namespace for the section store capability.
+const STORE_NS = 'section.';
+const SECRET_NS = 'section_'; // SecureStore keys: alphanumeric + ._- only
 
 const SectionCtx = createContext<SectionCapabilities | null>(null);
 
@@ -55,6 +67,46 @@ export function SectionHost({ children }: { children: React.ReactNode }): React.
         async getNostrPubkey() {
           const mnemonic = await loadMnemonic();
           return deriveNostrIdentity(mnemonic).pubkeyHex; // PUBLIC identity only
+        },
+        async signHunchEvent(template: { kind: number; tags: string[][]; content: string }) {
+          if (!HUNCH_SIGNABLE_KINDS.has(template.kind)) {
+            throw new Error(`kind ${template.kind} is not section-signable`);
+          }
+          const mnemonic = await loadMnemonic();
+          const ev = await signEvent(
+            { ...template, created_at: Math.floor(Date.now() / 1000) },
+            () => loadNostrPrivkeyBytes(mnemonic),
+          );
+          return {
+            id: ev.id,
+            pubkey: ev.pubkey,
+            created_at: ev.created_at,
+            kind: ev.kind,
+            tags: ev.tags,
+            content: ev.content,
+            sig: ev.sig,
+          };
+        },
+      },
+      store: {
+        async get(key: string) {
+          try {
+            return getPref(STORE_NS + key);
+          } catch {
+            return null;
+          }
+        },
+        async set(key: string, value: string) {
+          setPref(STORE_NS + key, value);
+        },
+        async getSecret(key: string) {
+          return SecureStore.getItemAsync(SECRET_NS + key.replace(/[^A-Za-z0-9._-]/g, '_'));
+        },
+        async setSecret(key: string, value: string) {
+          await SecureStore.setItemAsync(SECRET_NS + key.replace(/[^A-Za-z0-9._-]/g, '_'), value);
+        },
+        async deleteSecret(key: string) {
+          await SecureStore.deleteItemAsync(SECRET_NS + key.replace(/[^A-Za-z0-9._-]/g, '_'));
         },
       },
     }),

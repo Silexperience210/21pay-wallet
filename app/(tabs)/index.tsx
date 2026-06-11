@@ -29,6 +29,7 @@ export default function Home(): React.ReactElement {
   // gate enables it — fail-closed before/without a successful fetch.
   const [casinoEnabled, setCasinoEnabled] = useState(isFeatureEnabled('casino'));
   const [minersEnabled, setMinersEnabled] = useState(isFeatureEnabled('mineurs'));
+  const [marketsEnabled, setMarketsEnabled] = useState(isFeatureEnabled('markets'));
 
   const refresh = useCallback(async () => {
     if (!activeBackendKind) return;
@@ -62,6 +63,7 @@ export default function Home(): React.ReactElement {
       .then(() => {
         setCasinoEnabled(isFeatureEnabled('casino'));
         setMinersEnabled(isFeatureEnabled('mineurs'));
+        setMarketsEnabled(isFeatureEnabled('markets'));
       })
       .catch(() => {}); // fail-closed: entries stay hidden
   }, [refresh]);
@@ -107,6 +109,11 @@ export default function Home(): React.ReactElement {
       {minersEnabled ? (
         <View style={styles.sectionGap}>
           <SecondaryButton label={t('miners.entry')} onPress={() => router.push('/(sections)/miners')} />
+        </View>
+      ) : null}
+      {marketsEnabled ? (
+        <View style={styles.sectionGap}>
+          <SecondaryButton label={t('markets.entry')} onPress={() => router.push('/(sections)/markets')} />
         </View>
       ) : null}
     </ScreenScaffold>
