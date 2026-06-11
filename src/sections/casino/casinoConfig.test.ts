@@ -1,17 +1,12 @@
-// RED stub — Wave-0 gap (Phase 5 / 05-01). Origin allow/deny classification +
-// deposit bounds (CASINO-01/02). Filled GREEN in 05-04 against
-// `@/sections/casino/casinoConfig` (does not exist yet).
+// Origin allow/deny classification + deposit bounds (CASINO-01/02). GREEN in 05-04.
 // Analog: src/core/featureGate/featureGate.test.ts (strict-validation style).
 //
 // Run: `npx jest src/sections/casino/casinoConfig.test.ts`
-//
-// it.todo() (RED-by-design, suite stays green) until 05-04 implements the module.
+import { isCasinoOrigin, DEPOSIT_MIN_SAT, DEPOSIT_MAX_SAT } from './casinoConfig';
 
 // ---------------------------------------------------------------------------
-// LITERAL CONTRACT the 05-04 implementation must satisfy (do NOT change these).
+// LITERAL CONTRACT (from the 05-01 RED stub — unchanged).
 // ---------------------------------------------------------------------------
-// isCasinoOrigin(url): true ONLY for https + the casino host; fail-closed otherwise.
-// DEPOSIT_MIN_SAT === 1000, DEPOSIT_MAX_SAT === 100000 (confirmed casino contract).
 export const CASINO_HOST = 'satoshi-casino21.vercel.app';
 export const ALLOWED_URL = `https://${CASINO_HOST}/foo`;
 export const OFF_DOMAIN_URL = 'https://evil.example.com/foo';
@@ -20,11 +15,23 @@ export const GARBAGE_URL = 'not a url at all';
 export const EXPECTED_DEPOSIT_MIN_SAT = 1000;
 export const EXPECTED_DEPOSIT_MAX_SAT = 100000;
 
-describe('casinoConfig — origin classification + deposit bounds [RED stub, filled 05-04]', () => {
-  it.todo(`isCasinoOrigin('${ALLOWED_URL}') === true`);
-  it.todo(`isCasinoOrigin('${OFF_DOMAIN_URL}') === false (off-domain host)`);
-  it.todo(`isCasinoOrigin('${NON_HTTPS_URL}') === false (non-https rejected)`);
-  it.todo(`isCasinoOrigin('${GARBAGE_URL}') === false (non-URL garbage, never throws)`);
-  it.todo(`DEPOSIT_MIN_SAT === ${EXPECTED_DEPOSIT_MIN_SAT}`);
-  it.todo(`DEPOSIT_MAX_SAT === ${EXPECTED_DEPOSIT_MAX_SAT}`);
+describe('casinoConfig — origin classification + deposit bounds', () => {
+  it(`isCasinoOrigin('${ALLOWED_URL}') === true`, () => {
+    expect(isCasinoOrigin(ALLOWED_URL)).toBe(true);
+  });
+  it(`isCasinoOrigin('${OFF_DOMAIN_URL}') === false (off-domain host)`, () => {
+    expect(isCasinoOrigin(OFF_DOMAIN_URL)).toBe(false);
+  });
+  it(`isCasinoOrigin('${NON_HTTPS_URL}') === false (non-https rejected)`, () => {
+    expect(isCasinoOrigin(NON_HTTPS_URL)).toBe(false);
+  });
+  it(`isCasinoOrigin('${GARBAGE_URL}') === false (non-URL garbage, never throws)`, () => {
+    expect(isCasinoOrigin(GARBAGE_URL)).toBe(false);
+  });
+  it(`DEPOSIT_MIN_SAT === ${EXPECTED_DEPOSIT_MIN_SAT}`, () => {
+    expect(DEPOSIT_MIN_SAT).toBe(EXPECTED_DEPOSIT_MIN_SAT);
+  });
+  it(`DEPOSIT_MAX_SAT === ${EXPECTED_DEPOSIT_MAX_SAT}`, () => {
+    expect(DEPOSIT_MAX_SAT).toBe(EXPECTED_DEPOSIT_MAX_SAT);
+  });
 });
