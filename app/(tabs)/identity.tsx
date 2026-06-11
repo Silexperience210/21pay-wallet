@@ -95,15 +95,26 @@ export default function Identity(): React.ReactElement {
 
   // Re-entrant custody entry (D-07): switch backends, manage NWC connections.
   const custodyRow = (
-    <Pressable
-      onPress={() => router.push('/custody')}
-      style={styles.seedRow}
-      accessibilityRole="button"
-    >
-      <Feather name="shield" size={16} color={theme.color.accent} />
-      <Text style={styles.seedRowText}>{t('identity.custody')}</Text>
-      <Feather name="chevron-right" size={16} color={theme.color.textMuted} />
-    </Pressable>
+    <>
+      <Pressable
+        onPress={() => router.push('/custody')}
+        style={styles.seedRow}
+        accessibilityRole="button"
+      >
+        <Feather name="shield" size={16} color={theme.color.accent} />
+        <Text style={styles.seedRowText}>{t('identity.custody')}</Text>
+        <Feather name="chevron-right" size={16} color={theme.color.textMuted} />
+      </Pressable>
+      <Pressable
+        onPress={() => router.push('/contentwall')}
+        style={styles.seedRow}
+        accessibilityRole="button"
+      >
+        <Feather name="file-text" size={16} color={theme.color.accent} />
+        <Text style={styles.seedRowText}>{t('identity.contentwall')}</Text>
+        <Feather name="chevron-right" size={16} color={theme.color.textMuted} />
+      </Pressable>
+    </>
   );
 
   if (claimed) {

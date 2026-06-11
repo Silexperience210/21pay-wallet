@@ -36,6 +36,9 @@ export default function RootLayout(): React.ReactElement {
             <Stack.Screen name="(sections)" />
             <Stack.Screen name="onboarding" />
             <Stack.Screen name="custody" />
+            <Stack.Screen name="contentwall" />
+            <Stack.Screen name="contentwall-studio" />
+            <Stack.Screen name="contentwall-view" options={{ presentation: 'fullScreenModal' }} />
             <Stack.Screen name="nwc-connect" options={{ presentation: 'modal' }} />
             <Stack.Screen name="spark-connect" options={{ presentation: 'modal' }} />
             <Stack.Screen name="nfc" options={{ presentation: 'fullScreenModal' }} />
