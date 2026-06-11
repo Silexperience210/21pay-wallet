@@ -59,6 +59,62 @@ describe('CustodialLnbits', () => {
     expect(await new CustodialLnbits(cfg).reconcile('h', 'pending', Date.now() - 1000)).toBe('expired');
   });
 
+  // LNbits v1 schema (verified live vs 21pay.org 2026-06-11): `status` is a string
+  // ('success'|'pending'|'failed') — the legacy boolean `pending` is GONE; `time` is
+  // an ISO datetime string. The old mapping displayed UNPAID invoices as "Settled"
+  // with 01/01/1970 dates (the balance/history mismatch bug).
+  it('listTransactions maps the LNbits v1 schema: status string + ISO time', async () => {
+    mockFetch(() => ({
+      ok: true,
+      status: 200,
+      body: [
+        {
+          payment_hash: 'h-pending',
+          amount: 1000, // +1 sat incoming, UNPAID
+          status: 'pending',
+          time: '2026-06-11T10:07:08.315253+00:00',
+          created_at: '2026-06-11T10:07:08.315257+00:00',
+          memo: 'unpaid invoice',
+        },
+        {
+          payment_hash: 'h-paid',
+          amount: 2000,
+          status: 'success',
+          time: '2026-06-11T09:00:00+00:00',
+          memo: 'real receive',
+        },
+        {
+          payment_hash: 'h-failed',
+          amount: -3000,
+          status: 'failed',
+          time: '2026-06-11T08:00:00+00:00',
+        },
+      ],
+    }));
+    const { txs } = await new CustodialLnbits(cfg).listTransactions();
+    // An unpaid invoice is PENDING — never shown as settled (the screenshot bug).
+    expect(txs[0]).toMatchObject({ id: 'h-pending', status: 'pending', amountSat: 1, direction: 'in' });
+    expect(txs[1]).toMatchObject({ id: 'h-paid', status: 'settled', amountSat: 2 });
+    expect(txs[2]).toMatchObject({ id: 'h-failed', status: 'failed', direction: 'out' });
+    // ISO time parses to real ms — never the 01/01/1970 epoch.
+    expect(txs[0].createdAt).toBe(Date.parse('2026-06-11T10:07:08.315253+00:00'));
+    expect(txs[0].createdAt).toBeGreaterThan(1_700_000_000_000);
+  });
+
+  it('listTransactions still maps the legacy (<v1) schema: pending bool + unix time', async () => {
+    mockFetch(() => ({
+      ok: true,
+      status: 200,
+      body: [
+        { payment_hash: 'h1', amount: 5000, pending: true, time: 1718000000, memo: 'old pending' },
+        { payment_hash: 'h2', amount: 5000, pending: false, time: 1718000001 },
+      ],
+    }));
+    const { txs } = await new CustodialLnbits(cfg).listTransactions();
+    expect(txs[0]).toMatchObject({ status: 'pending', createdAt: 1718000000 * 1000 });
+    expect(txs[1]).toMatchObject({ status: 'settled' });
+  });
+
   it('never leaks the admin key in an error message', async () => {
     mockFetch(() => {
       throw new Error('boom');

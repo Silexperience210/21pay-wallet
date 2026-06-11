@@ -8,6 +8,35 @@ import { httpRequest, enqueue } from '../../core/net';
 import type { CustodialLnbitsConfig } from '../lnbitsConfig';
 import { mapLnbitsToStatus, transition } from './paymentStateMachine';
 
+// LNbits v1 replaced the boolean `pending` with a `status` string ('success' |
+// 'pending' | 'failed') in GET /api/v1/payments — verified live against 21pay.org
+// 2026-06-11 (the old mapping displayed UNPAID invoices as "Settled"). Map the v1
+// string first; fall back to the legacy boolean. Fail-closed: an unknown status is
+// 'pending', never invented-settled.
+function mapListPaymentStatus(p: { status?: string; pending?: boolean }):
+  | 'pending'
+  | 'settled'
+  | 'failed' {
+  if (typeof p.status === 'string') {
+    if (p.status === 'success') return 'settled';
+    if (p.status === 'failed') return 'failed';
+    return 'pending';
+  }
+  return p.pending ? 'pending' : 'settled'; // legacy <v1 shape
+}
+
+// LNbits v1 `time`/`created_at` are ISO datetime strings (legacy was unix seconds).
+// The old `p.time * 1000` on a string produced NaN → the 01/01/1970 dates.
+function parsePaymentTimeMs(p: { time?: number | string; created_at?: string }): number {
+  const t = p.time ?? p.created_at;
+  if (typeof t === 'number') return t * 1000; // legacy unix seconds
+  if (typeof t === 'string') {
+    const ms = Date.parse(t);
+    if (!Number.isNaN(ms)) return ms;
+  }
+  return Date.now(); // last resort — never epoch
+}
+
 export class CustodialLnbits implements WalletBackend {
   readonly kind = 'custodial-lnbits' as const;
   readonly capabilities: WalletCapabilities = { onchain: true, lnSend: true, lnReceive: true };
@@ -106,7 +135,15 @@ export class CustodialLnbits implements WalletBackend {
 
   async listTransactions(): Promise<{ txs: WalletTx[]; next?: string }> {
     const res = await httpRequest<
-      Array<{ payment_hash: string; amount: number; pending?: boolean; time: number; memo?: string }>
+      Array<{
+        payment_hash: string;
+        amount: number;
+        pending?: boolean; // legacy (<v1) boolean
+        status?: string; // LNbits v1: 'success' | 'pending' | 'failed'
+        time?: number | string; // legacy unix seconds OR v1 ISO datetime string
+        created_at?: string; // v1 ISO datetime
+        memo?: string;
+      }>
     >({
       baseUrl: this.cfg.baseUrl,
       path: '/api/v1/payments',
@@ -118,8 +155,8 @@ export class CustodialLnbits implements WalletBackend {
       paymentHash: p.payment_hash,
       direction: p.amount < 0 ? 'out' : 'in',
       amountSat: Math.floor(Math.abs(p.amount) / 1000),
-      status: p.pending ? 'pending' : 'settled',
-      createdAt: p.time * 1000,
+      status: mapListPaymentStatus(p),
+      createdAt: parsePaymentTimeMs(p),
       memo: p.memo,
     }));
     return { txs };
