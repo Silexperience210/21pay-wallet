@@ -122,7 +122,13 @@ export function CasinoLobbyScreen(): React.ReactElement {
               return true;
             }}
             onError={() => setErr(t('casino.backendErr'))}
-            onHttpError={() => setErr(t('casino.backendErr'))}
+            // onHttpError fires for EVERY subresource (favicon 404, in-page API
+            // 401…) — only a failing main document means the casino is down.
+            onHttpError={(e) => {
+              const failed = e.nativeEvent.url?.replace(/\/+$/, '');
+              const main = casinoApi.casinoWebViewSource().uri.replace(/\/+$/, '');
+              if (failed === main) setErr(t('casino.backendErr'));
+            }}
             style={styles.webview}
           />
         </View>

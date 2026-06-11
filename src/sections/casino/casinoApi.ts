@@ -51,14 +51,20 @@ export async function generateAuthUrl(): Promise<{ lnurl: string }> {
   return res.data;
 }
 
-/** GET /api/auth/callback?tag=login&k1=&sig=&key= — submits the LUD-04 signature. */
+/** GET /api/auth/callback?tag=login&k1=&sig=&key= — submits the LUD-04 signature.
+ *  The casino answers HTTP 200 with `{status:'ERROR', reason}` on a bad signature
+ *  (LUD-04 shape) — fail fast here instead of polling a challenge that will never
+ *  flip to authenticated. */
 export async function authCallback(k1: string, sig: string, key: string): Promise<void> {
-  await httpRequest<{ status?: string }>({
+  const res = await httpRequest<{ status?: string; reason?: string }>({
     baseUrl: CASINO_ORIGIN,
     path: `/api/auth/callback?tag=login&k1=${k1}&sig=${sig}&key=${key}`,
     headers: cookieHeaders(),
     idempotent: true,
   });
+  if (res.data?.status === 'ERROR') {
+    throw new Error(`lnurl-auth callback rejected: ${res.data.reason ?? 'unknown'}`);
+  }
 }
 
 export interface AuthStatus {
@@ -93,6 +99,10 @@ export async function pollAuthStatus(
       setSessionCookie(s.session_id);
       return 'authenticated';
     }
+    // The first authenticated poll CONSUMES the one-shot challenge server-side;
+    // an `authenticated` body without session_id (older API) must still count —
+    // on Android the Set-Cookie already landed in the shared platform cookie jar.
+    if (s.status === 'authenticated') return 'authenticated';
     if (s.status === 'expired') return 'expired';
     await new Promise((r) => setTimeout(r, interval));
   }

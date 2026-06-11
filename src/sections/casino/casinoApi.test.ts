@@ -9,6 +9,8 @@ import { httpRequest } from '../../core/net';
 import {
   generateAuthUrl,
   authStatus,
+  authCallback,
+  pollAuthStatus,
   deposit,
   checkPayment,
   withdraw,
@@ -109,6 +111,45 @@ describe('casinoApi — confirmed contract via mocked httpRequest (CASINO-02)', 
   it('deposit(100001) throws and does NOT call httpRequest (above max)', async () => {
     await expect(deposit(100001)).rejects.toThrow(/bounds/);
     expect(mockHttp).not.toHaveBeenCalled();
+  });
+
+  // ── Live auth/status contract (source api/auth/status.js, commit 7a06b30) ──
+  // The first authenticated poll CONSUMES the one-shot k1 challenge server-side;
+  // a re-poll returns `expired`. The session_id is in the JSON body (HttpOnly
+  // Set-Cookie is unreadable from native) — these payloads are the real shapes.
+
+  it('pollAuthStatus stores the session from the live authenticated payload (one poll, challenge consumed)', async () => {
+    mockHttp.mockResolvedValueOnce({
+      status: 200,
+      data: { status: 'authenticated', session_id: 'live-uuid', balance: 0, nickname: null, avatar: null },
+    });
+    await expect(pollAuthStatus(SAMPLE_K1)).resolves.toBe('authenticated');
+    expect(mockHttp).toHaveBeenCalledTimes(1); // never re-polls a consumed challenge
+    expect(hasSession()).toBe(true);
+  });
+
+  it('pollAuthStatus accepts `authenticated` WITHOUT session_id (older API — platform cookie jar)', async () => {
+    mockHttp.mockResolvedValueOnce({
+      status: 200,
+      data: { status: 'authenticated', balance: 0, nickname: null, avatar: null },
+    });
+    await expect(pollAuthStatus(SAMPLE_K1)).resolves.toBe('authenticated');
+    expect(mockHttp).toHaveBeenCalledTimes(1);
+  });
+
+  it('pollAuthStatus fails closed on the live expired payload', async () => {
+    mockHttp.mockResolvedValueOnce({ status: 200, data: { status: 'expired' } });
+    await expect(pollAuthStatus(SAMPLE_K1)).resolves.toBe('expired');
+  });
+
+  it('authCallback throws fast on the LUD-04 HTTP-200 {status:ERROR} shape', async () => {
+    mockHttp.mockResolvedValueOnce({ status: 200, data: { status: 'ERROR', reason: 'Signature invalide' } });
+    await expect(authCallback(SAMPLE_K1, 'deadbeef', '02' + 'a'.repeat(64))).rejects.toThrow(/Signature invalide/);
+  });
+
+  it('authCallback resolves on {status:OK}', async () => {
+    mockHttp.mockResolvedValueOnce({ status: 200, data: { status: 'OK' } });
+    await expect(authCallback(SAMPLE_K1, 'deadbeef', '02' + 'a'.repeat(64))).resolves.toBeUndefined();
   });
 
   it('deposit(1000) and deposit(100000) are accepted (boundaries)', async () => {
