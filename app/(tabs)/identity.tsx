@@ -93,6 +93,19 @@ export default function Identity(): React.ReactElement {
     return <ScreenScaffold title={t('identity.title')}><View /></ScreenScaffold>;
   }
 
+  // Re-entrant custody entry (D-07): switch backends, manage NWC connections.
+  const custodyRow = (
+    <Pressable
+      onPress={() => router.push('/custody')}
+      style={styles.seedRow}
+      accessibilityRole="button"
+    >
+      <Feather name="shield" size={16} color={theme.color.accent} />
+      <Text style={styles.seedRowText}>{t('identity.custody')}</Text>
+      <Feather name="chevron-right" size={16} color={theme.color.textMuted} />
+    </Pressable>
+  );
+
   if (claimed) {
     return (
       <ScreenScaffold title={t('identity.title')} scroll>
@@ -106,6 +119,7 @@ export default function Identity(): React.ReactElement {
         <Text style={styles.seedRowText}>{t('identity.viewSeed')}</Text>
         <Feather name="chevron-right" size={16} color={theme.color.textMuted} />
       </Pressable>
+      {custodyRow}
       </ScreenScaffold>
     );
   }
@@ -135,6 +149,7 @@ export default function Identity(): React.ReactElement {
         <Text style={styles.seedRowText}>{t('identity.viewSeed')}</Text>
         <Feather name="chevron-right" size={16} color={theme.color.textMuted} />
       </Pressable>
+      {custodyRow}
     </ScreenScaffold>
   );
 }

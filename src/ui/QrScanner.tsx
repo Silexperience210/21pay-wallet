@@ -13,7 +13,15 @@ import { EmptyState } from './EmptyState';
 import { SecondaryButton } from './SecondaryButton';
 import { useReducedMotion } from './useReducedMotion';
 
-export function QrScanner({ onDecode }: { onDecode: (parsed: ParsedPayment) => void }): React.ReactElement {
+export function QrScanner({
+  onDecode,
+  onRaw,
+}: {
+  onDecode: (parsed: ParsedPayment) => void;
+  /** Optional first look at the RAW QR payload (e.g. nostr+walletconnect:// pairing).
+   *  Return true to consume the scan — payment classification is then skipped. */
+  onRaw?: (data: string) => boolean;
+}): React.ReactElement {
   const reduced = useReducedMotion();
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
@@ -39,8 +47,14 @@ export function QrScanner({ onDecode }: { onDecode: (parsed: ParsedPayment) => v
   const handleScan = ({ data }: { data: string }) => {
     if (!armed.current) return;
     armed.current = false; // decode once, then disable to guard double-fire
-    const parsed = parsePaymentInput(data);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    if (onRaw?.(data)) {
+      setTimeout(() => {
+        armed.current = true;
+      }, 1200);
+      return;
+    }
+    const parsed = parsePaymentInput(data);
     onDecode(parsed);
     // Re-arm shortly so an "unknown" code can be retried without remounting.
     setTimeout(() => {

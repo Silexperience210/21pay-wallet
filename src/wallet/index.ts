@@ -28,12 +28,20 @@ export {
   getActiveCustodialConfig,
   getActiveSparkConfig,
   rehydrate,
+  switchToCustodial,
+  switchToNwc,
+  switchToSelfHosted,
 } from './walletProvider';
 export { createCustodialAccount } from './backends/custodialProvision';
 export { clearPersistedBackends } from './backendPersist';
 // Config types only — concrete backend classes are NEVER exported (CLAUDE.md #5).
-export type { NwcConnectionConfig } from './backends/nwcRemote';
+export type { NwcConnectionConfig, NodeBudget } from './backends/nwcRemote';
 export type { SparkConfig } from './sparkConfig';
+export { SPARK_READY } from './sparkConfig';
+export { provisionSpark } from './sparkProvision';
+export { parseNwcUri } from './backends/nwcConfig';
+// Pure migration orchestration (D-06) — not a concrete backend.
+export { sendAll, isSameNode } from './backends/migration';
 export {
   listConnections,
   loadConnectionConfig,

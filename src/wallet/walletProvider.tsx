@@ -10,7 +10,12 @@ import { NwcRemote, type NwcConnectionConfig } from './backends/nwcRemote';
 import { SelfHostedSpark } from './backends/selfHostedSpark';
 import type { SparkConfig } from './sparkConfig';
 import { parseNwcUri } from './backends/nwcConfig';
-import { addConnection, setActiveConnection, getActiveConnectionConfig } from './connections';
+import {
+  addConnection,
+  setActiveConnection,
+  getActiveConnectionConfig,
+  loadConnectionConfig,
+} from './connections';
 import {
   persistCustodialConfig,
   loadPersistedCustodialConfig,
@@ -19,9 +24,7 @@ import {
 } from './backendPersist';
 import { useWalletStore, insertTx, getPref, setPref, clearTxByBackend } from '../core/state';
 import { cryptoSelfTest, generateMnemonic, storeMnemonic, hasMnemonic, loadSparkSeed } from '../core/keys';
-
-// Local Spark data directory. 04-05 wires the real expo-file-system documentDirectory.
-const SPARK_STORAGE_DIR = 'spark';
+import { buildSparkConfig } from './sparkConfig';
 
 // Non-secret one-way change-token over a wallet credential. Detects when the ACTIVE
 // custodial wallet differs from the one the local tx cache belongs to, so a fresh or
@@ -150,14 +153,25 @@ export async function createAndActivateNwc(uri: string, name: string): Promise<W
   return backend;
 }
 
-/** Assemble a SparkConfig from a stored seed + environment (04-05 refines storageDir). */
-function buildSparkConfig(mnemonic: string): SparkConfig {
-  return {
-    mnemonic,
-    storageDir: SPARK_STORAGE_DIR,
-    apiKey: process.env.EXPO_PUBLIC_BREEZ_API_KEY ?? '',
-    network: (process.env.EXPO_PUBLIC_BREEZ_NETWORK as 'mainnet' | 'signet') ?? 'signet',
-  };
+/** D-07 custody switching: re-activate the persisted custodial wallet, or null when
+ *  none was ever provisioned (the UI offers creation through the ladder instead). */
+export async function switchToCustodial(): Promise<WalletBackend | null> {
+  const config = await loadPersistedCustodialConfig();
+  return config ? activateCustodial(config) : null;
+}
+
+/** D-07: make the named NWC connection active and switch to it. */
+export async function switchToNwc(id: string): Promise<WalletBackend | null> {
+  const cfg = await loadConnectionConfig(id);
+  if (!cfg) return null;
+  setActiveConnection(id);
+  return activateNwc(cfg);
+}
+
+/** D-07: switch back to the provisioned Spark wallet (seed already in the vault). */
+export async function switchToSelfHosted(): Promise<WalletBackend | null> {
+  const mnemonic = await loadSparkSeed();
+  return mnemonic ? activateSelfHosted(buildSparkConfig(mnemonic)) : null;
 }
 
 /** Re-activate the persisted wallet on app launch, branching by the last active backend

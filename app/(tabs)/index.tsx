@@ -12,7 +12,7 @@ import {
   BackupBanner,
   theme,
 } from '@/ui';
-import { useWallet, createAndActivateCustodial, syncHistory } from '@/wallet';
+import { useWallet, syncHistory } from '@/wallet';
 import { fetchSatFiatRate } from '@/wallet/price';
 import { useWalletStore } from '@/core/state';
 import { isFeatureEnabled, fetchFeatureGate } from '@/core/featureGate';
@@ -25,8 +25,6 @@ export default function Home(): React.ReactElement {
   const setBalance = useWalletStore((s) => s.setBalance);
   const hydrateHistory = useWalletStore((s) => s.hydrateHistory);
   const [rate, setRate] = useState(0);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
   // Server feature gate (DIST-02): the Casino entry renders only when the validated
   // gate enables it — fail-closed before/without a successful fetch.
   const [casinoEnabled, setCasinoEnabled] = useState(isFeatureEnabled('casino'));
@@ -64,27 +62,14 @@ export default function Home(): React.ReactElement {
       .catch(() => {}); // fail-closed: entry stays hidden
   }, [refresh]);
 
-  const onboard = async () => {
-    setBusy(true);
-    setErr(null);
-    try {
-      await createAndActivateCustodial();
-      await refresh();
-    } catch {
-      setErr('Could not create the wallet — check the 21pay connection.');
-    } finally {
-      setBusy(false);
-    }
-  };
+  // No wallet yet → the sovereignty ladder is the SINGLE onboarding path (D-08).
+  // The one-tap custodial entry that used to live here moved into the ladder.
+  useEffect(() => {
+    if (!activeBackendKind) router.replace('/onboarding');
+  }, [activeBackendKind]);
 
   if (!activeBackendKind) {
-    return (
-      <ScreenScaffold title={t('home.title.onboard')}>
-        <Text style={styles.lead}>{t('home.lead')}</Text>
-        <PrimaryButton label={t('home.create')} onPress={onboard} loading={busy} />
-        {err ? <Text style={styles.err}>{err}</Text> : null}
-      </ScreenScaffold>
-    );
+    return <ScreenScaffold title={t('home.title.onboard')}><View /></ScreenScaffold>;
   }
 
   const bal = balances[activeBackendKind];
@@ -120,14 +105,6 @@ export default function Home(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  lead: {
-    fontFamily: theme.font.body.fontFamily,
-    fontSize: 16,
-    lineHeight: 22,
-    color: theme.color.textMuted,
-    marginBottom: theme.space.xl,
-  },
-  err: { fontFamily: theme.font.body.fontFamily, fontSize: 13, color: theme.color.destructive, marginTop: theme.space.md },
   actions: { flexDirection: 'row', gap: theme.space.md, marginTop: theme.space.lg },
   actionItem: { flex: 1 },
   eyebrow: {
