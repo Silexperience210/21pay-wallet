@@ -1,19 +1,12 @@
 name: android-build
 
-# Direct-distribution build (NOT Google Play). Produces a signed APK via EAS cloud
-# build. Auth uses the EXPO_TOKEN GitHub secret only — never echoed, never committed.
+# Direct-distribution build (NOT Google Play). Builds the release APK with plain
+# Gradle on the runner (no EAS — the free-plan build quota made cloud builds
+# unreliable) and signs it with the SAME release keystore as before (restored from
+# secrets, so installed apps keep updating in place). Secrets are never echoed.
 
 on:
   workflow_dispatch:
-    inputs:
-      profile:
-        description: 'EAS build profile'
-        required: true
-        default: 'preview'
-        type: choice
-        options:
-          - preview
-          - production
   push:
     tags:
       - 'apk-*'
@@ -23,8 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the GitHub Release + upload the APK
-    env:
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,12 +26,17 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'npm'
 
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Install dependencies
         run: npm ci
 
       # The signing keystore is gitignored — restore it (+ credentials.json) from
-      # secrets so `credentialsSource: local` builds sign with the SAME keystore as
-      # local builds. Files are written outside the repo tree's tracked paths.
+      # secrets. Same keystore as every prior release: in-place updates keep working.
       - name: Restore Android signing credentials
         env:
           ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
@@ -50,20 +46,39 @@ jobs:
           echo "$ANDROID_KEYSTORE_B64" | base64 -d > credentials/release.keystore
           printf '%s' "$CREDENTIALS_JSON" > credentials.json
 
-      # Wait for the EAS build to finish and capture the signed artifact URL.
-      - name: Build APK on EAS (wait for completion)
-        id: eas
+      # Keep the Android versionCode monotonic (run number) and the versionName in
+      # sync with app.config.ts — the committed android/ has static placeholders.
+      - name: Sync version into Gradle
         run: |
-          npx eas-cli build \
-            --platform android \
-            --profile "${{ github.event.inputs.profile || 'preview' }}" \
-            --non-interactive --json > build.json
-          URL=$(jq -r '.[0].artifacts.applicationArchiveUrl // .[0].artifacts.buildUrl' build.json)
-          echo "Artifact URL: $URL"
-          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          VER=$(grep -oP "version: '\K[^']+" app.config.ts)
+          echo "App version: $VER (code ${{ github.run_number }})"
+          sed -i "s/versionCode 1$/versionCode ${{ github.run_number }}/" android/app/build.gradle
+          sed -i "s/versionName \"0.0.1\"/versionName \"$VER\"/" android/app/build.gradle
 
-      - name: Download the signed APK
-        run: curl -fL -o "21pay-${{ github.ref_name }}.apk" "${{ steps.eas.outputs.url }}"
+      - name: Build release APK (Gradle)
+        env:
+          GRADLE_OPTS: -Xmx4g -Dorg.gradle.daemon=false
+        run: |
+          chmod +x android/gradlew
+          cd android && ./gradlew assembleRelease --no-daemon
+
+      # The expo-generated release buildType signs with the DEBUG keystore — re-sign
+      # with the real release keystore (apksigner replaces the signing block).
+      - name: Sign with the release keystore
+        run: |
+          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          KS_PASS=$(jq -r '.android.keystore.keystorePassword' credentials.json)
+          KEY_PASS=$(jq -r '.android.keystore.keyPassword' credentials.json)
+          KEY_ALIAS=$(jq -r '.android.keystore.keyAlias' credentials.json)
+          OUT="21pay-${{ github.ref_name }}.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "$OUT"
+          "$BT/apksigner" sign \
+            --ks credentials/release.keystore \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass "pass:$KS_PASS" \
+            --key-pass "pass:$KEY_PASS" \
+            "$OUT"
+          "$BT/apksigner" verify --print-certs "$OUT" | head -3
 
       # On an apk-* tag, publish the APK as a GitHub Release (skipped for manual runs).
       - name: Publish GitHub Release
