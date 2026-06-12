@@ -10,9 +10,13 @@ type RequestFn = typeof httpRequest;
 
 /**
  * Is `name@LN_ADDRESS_DOMAIN` claimable? Validates the handle first (invalid → false
- * with NO network call), then probes /.well-known/lnurlp/{name}: 200 = already
- * resolves (taken → false), 404 = free (true). Never throws — any network error
- * degrades to false (treat as not-claimable rather than falsely available).
+ * with NO network call), then probes /.well-known/lnurlp/{name}.
+ *
+ * LNbits v1 QUIRK (verified live 2026-06-12): an unknown address answers HTTP 200
+ * with the LNURL error envelope `{"status":"ERROR","reason":"Lightning address not
+ * found."}` — NOT a 404. So "200" alone does not mean taken: a real LNURLp payload
+ * (callback/tag fields, no ERROR status) means taken; the ERROR envelope (or a
+ * legacy 404) means free. Never throws — network errors degrade to false.
  */
 export async function checkLnAddressAvailable(
   name: string,
@@ -21,15 +25,16 @@ export async function checkLnAddressAvailable(
 ): Promise<boolean> {
   if (!validateLnAddressHandle(name).valid) return false;
   try {
-    await request<unknown>({
+    const res = await request<{ status?: string; callback?: string; tag?: string }>({
       baseUrl: cfg.baseUrl,
       path: `/.well-known/lnurlp/${encodeURIComponent(name)}`,
       method: 'GET',
       idempotent: true,
     });
-    return false; // 200 → resolves → already taken
+    if (res.data?.status === 'ERROR') return true; // LNURL error envelope → free
+    return false; // real LNURLp payload → already taken
   } catch (e) {
-    if (e instanceof HttpError && e.status === 404) return true; // free
+    if (e instanceof HttpError && e.status === 404) return true; // legacy 404 → free
     return false; // network/server error → not claimable
   }
 }

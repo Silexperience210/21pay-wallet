@@ -46,6 +46,15 @@ jobs:
           echo "$ANDROID_KEYSTORE_B64" | base64 -d > credentials/release.keystore
           printf '%s' "$CREDENTIALS_JSON" > credentials.json
 
+      # EXPO_PUBLIC_* used to be injected by the EAS "preview" profile. Metro inlines
+      # them at JS-bundle time (inside Gradle), so they MUST be in the environment —
+      # without them the feature gate fails closed and every section entry vanishes.
+      # eas.json stays the single source of truth.
+      - name: Export EXPO_PUBLIC env from eas.json
+        run: |
+          jq -r '.build.preview.env | to_entries[] | "\(.key)=\(.value)"' eas.json >> "$GITHUB_ENV"
+          jq -r '.build.preview.env | keys[]' eas.json
+
       # Keep the Android versionCode monotonic (run number) and the versionName in
       # sync with app.config.ts — the committed android/ has static placeholders.
       - name: Sync version into Gradle

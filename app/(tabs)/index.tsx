@@ -10,6 +10,7 @@ import {
   PrimaryButton,
   SecondaryButton,
   BackupBanner,
+  SectionCard,
   theme,
 } from '@/ui';
 import { useWallet, syncHistory } from '@/wallet';
@@ -102,20 +103,54 @@ export default function Home(): React.ReactElement {
       <Text style={styles.eyebrow}>{t('home.recent')}</Text>
       <TxList txs={txs} compact />
       <View style={styles.spacer} />
-      {/* Sections entries (UX-02), server-gated per flag (DIST-02) — fail-closed hidden. */}
-      {casinoEnabled ? (
-        <SecondaryButton label={t('casino.entry')} onPress={() => router.push('/(sections)/casino')} />
+      {/* Univers 21pay (UX-02) — rich section cards, server-gated per flag
+          (DIST-02, fail-closed hidden). Tints mirror the 21pay web theme orbs. */}
+      {casinoEnabled || minersEnabled || marketsEnabled ? (
+        <Text style={styles.eyebrow}>{t('home.universe')}</Text>
       ) : null}
-      {minersEnabled ? (
-        <View style={styles.sectionGap}>
-          <SecondaryButton label={t('miners.entry')} onPress={() => router.push('/(sections)/miners')} />
-        </View>
-      ) : null}
-      {marketsEnabled ? (
-        <View style={styles.sectionGap}>
-          <SecondaryButton label={t('markets.entry')} onPress={() => router.push('/(sections)/markets')} />
-        </View>
-      ) : null}
+      <View style={styles.sections}>
+        {casinoEnabled ? (
+          <SectionCard
+            index={0}
+            icon="target"
+            tint={theme.color.accent}
+            title={t('home.card.casino.title')}
+            subtitle={t('home.card.casino.sub')}
+            tag="live"
+            onPress={() => router.push('/(sections)/casino')}
+          />
+        ) : null}
+        {minersEnabled ? (
+          <SectionCard
+            index={1}
+            icon="cpu"
+            tint="#3ECF8E"
+            title={t('home.card.miners.title')}
+            subtitle={t('home.card.miners.sub')}
+            tag="live"
+            onPress={() => router.push('/(sections)/miners')}
+          />
+        ) : null}
+        {marketsEnabled ? (
+          <SectionCard
+            index={2}
+            icon="trending-up"
+            tint="#7850ff"
+            title={t('home.card.markets.title')}
+            subtitle={t('home.card.markets.sub')}
+            tag="signet"
+            onPress={() => router.push('/(sections)/markets')}
+          />
+        ) : null}
+        <SectionCard
+          index={3}
+          icon="file-text"
+          tint="#ff5e74"
+          title={t('home.card.cw.title')}
+          subtitle={t('home.card.cw.sub')}
+          onPress={() => router.push('/contentwall')}
+        />
+      </View>
     </ScreenScaffold>
   );
 }
@@ -131,5 +166,5 @@ const styles = StyleSheet.create({
     marginBottom: theme.space.sm,
   },
   spacer: { height: theme.space.lg },
-  sectionGap: { marginTop: theme.space.md },
+  sections: { gap: theme.space.md },
 });

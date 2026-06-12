@@ -17,13 +17,25 @@ describe('checkLnAddressAvailable', () => {
     expect(request).not.toHaveBeenCalled();
   });
 
-  it('returns true when the well-known probe 404s (free)', async () => {
+  it('returns true when the well-known probe 404s (legacy free)', async () => {
     const request = jest.fn().mockRejectedValue(new HttpError(404, 'client', 'request failed (404)'));
     expect(await checkLnAddressAvailable('alice', cfg, request as never)).toBe(true);
   });
 
-  it('returns false when the probe resolves 200 (taken)', async () => {
-    const request = jest.fn().mockResolvedValue({ status: 200, data: {} });
+  it('returns true on the LNbits v1 LNURL error envelope (HTTP 200 + status:ERROR = free)', async () => {
+    // Live payload captured 2026-06-12 on 21pay.org for an unknown name.
+    const request = jest.fn().mockResolvedValue({
+      status: 200,
+      data: { status: 'ERROR', reason: 'Lightning address not found.' },
+    });
+    expect(await checkLnAddressAvailable('alice', cfg, request as never)).toBe(true);
+  });
+
+  it('returns false when the probe resolves a REAL LNURLp payload (taken)', async () => {
+    const request = jest.fn().mockResolvedValue({
+      status: 200,
+      data: { tag: 'payRequest', callback: 'https://21pay.org/lnurlp/api/v1/lnurl/cb/x', minSendable: 1000 },
+    });
     expect(await checkLnAddressAvailable('alice', cfg, request as never)).toBe(false);
   });
 

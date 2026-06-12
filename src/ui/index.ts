@@ -24,4 +24,5 @@ export { PaymentStatusSheet } from './PaymentStatusSheet';
 export { AddressClaimField } from './AddressClaimField';
 export { LnAddressCard } from './LnAddressCard';
 export { BackupBanner } from './BackupBanner';
+export { SectionCard } from './SectionCard';
 export { ellipsizeMiddle } from './textFormat';
