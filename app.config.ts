@@ -6,7 +6,7 @@ const config: ExpoConfig = {
   name: '21pay',
   slug: '21pay-wallet',
   owner: 'silexperience',
-  version: '0.7.2',
+  version: '0.8.0',
   orientation: 'portrait',
   scheme: 'pay21',
   userInterfaceStyle: 'automatic',
