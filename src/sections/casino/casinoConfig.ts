@@ -5,7 +5,7 @@
 export const CASINO_ORIGIN = process.env.EXPO_PUBLIC_CASINO_ORIGIN ?? 'https://satoshi-casino21.vercel.app';
 
 /** For react-native-webview's originWhitelist prop. */
-export const CASINO_ORIGIN_PATTERN = `${CASINO_ORIGIN}*`;
+export const CASINO_ORIGIN_PATTERN = `${CASINO_ORIGIN}/*`;
 
 // Confirmed casino API contract (RESEARCH O-2, source Silexemple/satoshi-casino21).
 export const DEPOSIT_MIN_SAT = 1000;

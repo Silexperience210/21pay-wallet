@@ -9,7 +9,7 @@
 //             errors are NOT caught by React boundaries, RESEARCH Pitfall 2)
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
+import { router, Href } from 'expo-router';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { ScreenScaffold, SecondaryButton, theme } from '@/ui';
 import { t } from '@/i18n';
@@ -35,6 +35,7 @@ export function CasinoLobbyScreen(): React.ReactElement {
   const caps = useSectionCapabilities(); // NEVER useWallet (constraint 5)
   const [authed, setAuthed] = useState<boolean | null>(null); // null = logging in
   const [err, setErr] = useState<string | null>(null);
+  const [liveBalance, setLiveBalance] = useState<number | null>(null);
   // Remount key — layer 2: a dead renderer process gets a fresh WebView.
   const [webViewKey, setWebViewKey] = useState(0);
 
@@ -59,8 +60,8 @@ export function CasinoLobbyScreen(): React.ReactElement {
       // layer 3: a throwing handler must never escape to the host
       switch (msg.type) {
         case 'balance_update':
-          // Section-owned signal; the wallet screen polls its own balance — never
-          // written to the wallet store (D-04).
+          // Section-owned signal; update the lobby display but never the wallet store (D-04).
+          setLiveBalance(msg.casinoBalanceSat);
           break;
         case 'provably_fair':
           lastProvablyFair = {
@@ -70,8 +71,12 @@ export function CasinoLobbyScreen(): React.ReactElement {
           };
           break;
         case 'deposit_request':
-          // NEVER auto-pay (T-05-16) — route to the explicit deposit screen.
-          router.push('/(sections)/casino/wallet');
+          // NEVER auto-pay (T-05-16) — route to the explicit deposit screen,
+          // pre-filling the amount the game asked for.
+          {
+            const params = msg.amountSat ? `?amountSat=${msg.amountSat}` : '';
+            router.push(`/(sections)/casino/wallet${params}` as Href);
+          }
           break;
       }
     } catch (e) {
@@ -95,6 +100,13 @@ export function CasinoLobbyScreen(): React.ReactElement {
           />
         </View>
       </View>
+
+      {liveBalance != null ? (
+        <View style={styles.balanceChip}>
+          <Text style={styles.balanceChipLabel}>{t('casino.balance')}</Text>
+          <Text style={styles.balanceChipValue}>{liveBalance.toLocaleString('fr-FR')} sats</Text>
+        </View>
+      ) : null}
 
       {err ? <Text style={styles.err}>{err}</Text> : null}
 
@@ -140,6 +152,18 @@ export function CasinoLobbyScreen(): React.ReactElement {
 const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', gap: theme.space.md, marginBottom: theme.space.md },
   headerItem: { flex: 1 },
+  balanceChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.color.cardFill,
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.space.sm,
+    marginBottom: theme.space.md,
+  },
+  balanceChipLabel: { fontFamily: theme.font.label.fontFamily, fontSize: 13, color: theme.color.textMuted },
+  balanceChipValue: { fontFamily: theme.font.mono.fontFamily, fontSize: 14, color: theme.color.text },
   lead: { fontFamily: theme.font.body.fontFamily, fontSize: 15, color: theme.color.textMuted, textAlign: 'center', marginTop: theme.space.xl },
   err: { fontFamily: theme.font.body.fontFamily, fontSize: 13, color: theme.color.destructive, marginBottom: theme.space.sm },
   webviewWrap: { flex: 1, borderRadius: theme.radius.md, overflow: 'hidden', minHeight: 420 },

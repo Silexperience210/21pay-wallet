@@ -15,7 +15,7 @@ export default function FairScreen(): React.ReactElement {
         onPress={() => router.back()}
         hitSlop={12}
         accessibilityRole="button"
-        accessibilityLabel={t('nfc.close')}
+        accessibilityLabel={t('common.close')}
         style={{ marginBottom: theme.space.sm, alignSelf: 'flex-start' }}
       >
         <Feather name="chevron-left" size={26} color={theme.color.text} />

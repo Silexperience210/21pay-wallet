@@ -8,7 +8,7 @@
 // casino pays it (POST /api/withdraw, fee reserve max(1%,10) per the contract).
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { ScreenScaffold, AmountInput, PrimaryButton, PaymentStatusSheet, theme } from '@/ui';
 import type { PaymentStatus } from '@/wallet';
 import { t } from '@/i18n';
@@ -21,8 +21,12 @@ type Tab = 'deposit' | 'withdraw';
 
 export function CasinoWalletScreen(): React.ReactElement {
   const caps = useSectionCapabilities(); // NEVER useWallet (constraint 5)
-  const [tab, setTab] = useState<Tab>('deposit');
-  const [amountSat, setAmountSat] = useState<number | null>(null);
+  const params = useLocalSearchParams<{ amountSat?: string; tab?: Tab }>();
+  const [tab, setTab] = useState<Tab>(params.tab === 'withdraw' ? 'withdraw' : 'deposit');
+  const parsedParamSat = params.amountSat ? parseInt(params.amountSat, 10) : null;
+  const [amountSat, setAmountSat] = useState<number | null>(
+    parsedParamSat != null && Number.isFinite(parsedParamSat) ? parsedParamSat : null,
+  );
   const [casinoBalance, setCasinoBalance] = useState<number | null>(null);
   const [status, setStatus] = useState<PaymentStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -49,11 +53,18 @@ export function CasinoWalletScreen(): React.ReactElement {
   useEffect(() => {
     setAmountSat(null);
     setErr(null);
+    setStatus(null);
+    setBusy(false);
   }, [tab]);
 
   const depositValid =
     amountSat != null && Number.isInteger(amountSat) && amountSat >= DEPOSIT_MIN_SAT && amountSat <= DEPOSIT_MAX_SAT;
-  const withdrawValid = amountSat != null && amountSat > 0;
+
+  /** Casino keeps a fee reserve of max(1%, 10 sats) on withdrawals. */
+  const withdrawFeeReserve = useCallback((amount: number) => Math.max(Math.ceil(amount * 0.01), 10), []);
+  const maxWithdrawSat = casinoBalance != null ? Math.max(0, casinoBalance - withdrawFeeReserve(casinoBalance)) : undefined;
+  const withdrawValid =
+    amountSat != null && amountSat > 0 && (maxWithdrawSat == null || amountSat <= maxWithdrawSat);
 
   // layer 3 (CASINO-04): every async money action is try/caught — a backend failure
   // surfaces as a status/error, never an unhandled rejection escaping the section.
@@ -73,8 +84,9 @@ export function CasinoWalletScreen(): React.ReactElement {
       }
       setStatus(paid ? 'settled' : 'expired');
       await refreshBalance();
-    } catch {
+    } catch (e) {
       setStatus('failed');
+      setErr(e instanceof Error && e.message ? e.message : t('casino.depositErr'));
     } finally {
       setBusy(false);
     }
@@ -90,8 +102,9 @@ export function CasinoWalletScreen(): React.ReactElement {
       await casinoApi.withdraw(bolt11); // the casino pays our invoice
       setStatus('settled');
       await refreshBalance();
-    } catch {
+    } catch (e) {
       setStatus('failed');
+      setErr(e instanceof Error && e.message ? e.message : t('casino.withdrawErr'));
     } finally {
       setBusy(false);
     }
@@ -142,8 +155,11 @@ export function CasinoWalletScreen(): React.ReactElement {
             </>
           ) : (
             <>
-              <AmountInput valueSat={amountSat} onChange={setAmountSat} max={casinoBalance ?? undefined} />
+              <AmountInput valueSat={amountSat} onChange={setAmountSat} max={maxWithdrawSat} />
               <Text style={styles.note}>{t('casino.withdraw.note')}</Text>
+              {maxWithdrawSat != null && maxWithdrawSat > 0 && amountSat != null && amountSat > maxWithdrawSat ? (
+                <Text style={styles.warn}>{t('casino.withdraw.overMax', { max: String(maxWithdrawSat) })}</Text>
+              ) : null}
               <PrimaryButton label={t('casino.withdraw.cta')} onPress={doWithdraw} loading={busy} />
             </>
           )}
