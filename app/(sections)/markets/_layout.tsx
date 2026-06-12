@@ -20,6 +20,7 @@ export default function MarketsLayout(): React.ReactElement {
           <Stack.Screen name="index" />
           <Stack.Screen name="market" />
           <Stack.Screen name="bet" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="create" options={{ presentation: 'modal' }} />
           <Stack.Screen name="positions" />
         </Stack>
       </SectionHost>

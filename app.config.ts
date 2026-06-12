@@ -29,6 +29,10 @@ const config: ExpoConfig = {
       { cameraPermission: 'Scan a Lightning or on-chain QR code to pay or receive.' },
     ],
     [
+      'expo-image-picker',
+      { photosPermission: 'Pick an image or video to publish as paid content.' },
+    ],
+    [
       'react-native-nfc-manager',
       { nfcPermission: 'Tap to pay or receive Bitcoin over NFC.' },
     ],

@@ -1,33 +1,53 @@
 // ContentWall Studio — the CREATOR side, powered by the custodial 21pay wallet's
-// own LNbits keys (this is the same credential tier as the LN-address claim; no
-// Core key material involved). v1 native scope: list my items + revenue stats +
-// publish a paid ARTICLE + copy the share link. Images/bundles stay on the web UI.
+// own LNbits keys (same credential tier as the LN-address claim; no Core key
+// material). Publishes paid ARTICLES (markdown) and MEDIA: image / video / audio /
+// file bundles — files are picked natively and pushed multipart to the extension
+// (which validates real content by magic bytes server-side).
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { ScreenScaffold, PrimaryButton, SecondaryButton, EmptyState, theme } from '@/ui';
 import { getActiveCustodialConfig } from '@/wallet';
 import {
   listMyItems,
   createArticleItem,
+  createMediaItem,
+  uploadItemFile,
   getItemStats,
   shareUrl,
   type ContentwallItem,
   type ItemStats,
+  type MediaContentType,
+  type PickedFile,
 } from '@/wallet/contentwall';
 import { t } from '@/i18n';
+
+type PublishType = 'article' | MediaContentType;
+
+const TYPES: { key: PublishType; icon: keyof typeof Feather.glyphMap }[] = [
+  { key: 'article', icon: 'file-text' },
+  { key: 'image', icon: 'image' },
+  { key: 'video', icon: 'video' },
+  { key: 'audio', icon: 'music' },
+  { key: 'bundle', icon: 'archive' },
+];
 
 export default function ContentwallStudio(): React.ReactElement {
   const cfg = getActiveCustodialConfig();
   const [items, setItems] = useState<ContentwallItem[]>([]);
   const [stats, setStats] = useState<Record<string, ItemStats | null>>({});
   const [creating, setCreating] = useState(false);
+  const [pubType, setPubType] = useState<PublishType>('article');
   const [title, setTitle] = useState('');
   const [price, setPrice] = useState('210');
   const [teaser, setTeaser] = useState('');
   const [content, setContent] = useState('');
+  const [files, setFiles] = useState<PickedFile[]>([]);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -66,26 +86,85 @@ export default function ContentwallStudio(): React.ReactElement {
     );
   }
 
+  const pickFiles = async () => {
+    setErr(null);
+    try {
+      if (pubType === 'image' || pubType === 'video') {
+        const res = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: pubType === 'image' ? ['images'] : ['videos'],
+          quality: 0.92,
+        });
+        if (res.canceled || !res.assets?.[0]) return;
+        const a = res.assets[0];
+        setFiles([
+          {
+            uri: a.uri,
+            name: a.fileName ?? `upload.${pubType === 'image' ? 'jpg' : 'mp4'}`,
+            mimeType: a.mimeType ?? undefined,
+          },
+        ]);
+      } else {
+        // audio → single; bundle → multiple files of any type
+        const res = await DocumentPicker.getDocumentAsync({
+          multiple: pubType === 'bundle',
+          type: pubType === 'audio' ? 'audio/*' : '*/*',
+          copyToCacheDirectory: true,
+        });
+        if (res.canceled || !res.assets?.length) return;
+        setFiles(
+          res.assets.map((a) => ({ uri: a.uri, name: a.name, mimeType: a.mimeType ?? undefined })),
+        );
+      }
+    } catch {
+      setErr(t('cw.pickErr'));
+    }
+  };
+
+  const resetForm = () => {
+    setCreating(false);
+    setTitle('');
+    setContent('');
+    setTeaser('');
+    setFiles([]);
+    setProgress(null);
+  };
+
   const onPublish = async () => {
     setErr(null);
+    const amountSat = parseInt(price, 10) || 0;
+    if (pubType !== 'article' && files.length === 0) {
+      setErr(t('cw.needFile'));
+      return;
+    }
     setBusy(true);
     try {
-      await createArticleItem(cfg, {
-        title,
-        amountSat: parseInt(price, 10) || 0,
-        content,
-        teaser: teaser || undefined,
-        markdown: true,
-      });
-      setCreating(false);
-      setTitle('');
-      setContent('');
-      setTeaser('');
+      if (pubType === 'article') {
+        await createArticleItem(cfg, {
+          title,
+          amountSat,
+          content,
+          teaser: teaser || undefined,
+          markdown: true,
+        });
+      } else {
+        const item = await createMediaItem(cfg, {
+          title,
+          amountSat,
+          contentType: pubType,
+          teaser: teaser || undefined,
+        });
+        for (let i = 0; i < files.length; i++) {
+          setProgress(t('cw.uploading', { n: String(i + 1), total: String(files.length) }));
+          await uploadItemFile(cfg, item.id, pubType, files[i]);
+        }
+      }
+      resetForm();
       await load();
-    } catch {
-      setErr(t('cw.publishErr'));
+    } catch (e) {
+      setErr(e instanceof Error && e.message ? e.message : t('cw.publishErr'));
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   };
 
@@ -101,6 +180,25 @@ export default function ContentwallStudio(): React.ReactElement {
 
       {creating ? (
         <View style={styles.form}>
+          <View style={styles.typeChips}>
+            {TYPES.map(({ key, icon }) => (
+              <Pressable
+                key={key}
+                onPress={() => {
+                  setPubType(key);
+                  setFiles([]);
+                }}
+                accessibilityRole="button"
+                style={[styles.typeChip, pubType === key && styles.typeChipOn]}
+              >
+                <Feather name={icon} size={15} color={pubType === key ? theme.color.accent : theme.color.textMuted} />
+                <Text style={[styles.typeChipText, pubType === key && styles.typeChipTextOn]}>
+                  {t(`cw.type.${key}`)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
           <TextInput
             style={styles.input}
             value={title}
@@ -123,20 +221,40 @@ export default function ContentwallStudio(): React.ReactElement {
             placeholder={t('cw.form.teaser')}
             placeholderTextColor={theme.color.textMuted}
           />
-          <TextInput
-            style={[styles.input, styles.textarea]}
-            value={content}
-            onChangeText={setContent}
-            placeholder={t('cw.form.content')}
-            placeholderTextColor={theme.color.textMuted}
-            multiline
-            textAlignVertical="top"
-          />
+
+          {pubType === 'article' ? (
+            <TextInput
+              style={[styles.input, styles.textarea]}
+              value={content}
+              onChangeText={setContent}
+              placeholder={t('cw.form.content')}
+              placeholderTextColor={theme.color.textMuted}
+              multiline
+              textAlignVertical="top"
+            />
+          ) : (
+            <>
+              <SecondaryButton
+                label={files.length > 0 ? t('cw.changeFile') : t(`cw.pick.${pubType}`)}
+                onPress={pickFiles}
+              />
+              {files.map((f) => (
+                <View key={f.uri} style={styles.fileRow}>
+                  <Feather name="paperclip" size={13} color={theme.color.success} />
+                  <Text style={styles.fileName} numberOfLines={1}>
+                    {f.name}
+                  </Text>
+                </View>
+              ))}
+            </>
+          )}
+
+          {progress ? <Text style={styles.hint}>{progress}</Text> : null}
           <PrimaryButton label={t('cw.publish')} onPress={onPublish} loading={busy} />
-          <SecondaryButton label={t('cw.cancel')} onPress={() => setCreating(false)} />
+          <SecondaryButton label={t('cw.cancel')} onPress={resetForm} />
         </View>
       ) : (
-        <PrimaryButton label={t('cw.newArticle')} onPress={() => setCreating(true)} />
+        <PrimaryButton label={t('cw.new')} onPress={() => setCreating(true)} />
       )}
 
       <Text style={styles.eyebrow}>{t('cw.myItems')}</Text>
@@ -172,6 +290,20 @@ export default function ContentwallStudio(): React.ReactElement {
 const styles = StyleSheet.create({
   err: { fontFamily: theme.font.body.fontFamily, fontSize: 13, color: theme.color.destructive, marginBottom: theme.space.sm, textAlign: 'center' },
   form: { gap: theme.space.md },
+  typeChips: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
+  typeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.space.sm,
+  },
+  typeChipOn: { borderColor: theme.color.accent },
+  typeChipText: { fontFamily: theme.font.label.fontFamily, fontSize: 12, color: theme.color.textMuted },
+  typeChipTextOn: { color: theme.color.accent },
   input: {
     borderWidth: 1,
     borderColor: theme.color.border,
@@ -183,6 +315,8 @@ const styles = StyleSheet.create({
     color: theme.color.text,
   },
   textarea: { minHeight: 160 },
+  fileRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm, paddingHorizontal: theme.space.sm },
+  fileName: { flex: 1, fontFamily: theme.font.mono.fontFamily, fontSize: 12, color: theme.color.text },
   eyebrow: { fontFamily: theme.font.label.fontFamily, fontSize: 13, color: theme.color.textMuted, marginTop: theme.space.xl, marginBottom: theme.space.sm },
   hint: { fontFamily: theme.font.body.fontFamily, fontSize: 13, color: theme.color.textMuted, textAlign: 'center', marginTop: theme.space.md },
   row: {

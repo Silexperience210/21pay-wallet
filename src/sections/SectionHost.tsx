@@ -13,9 +13,9 @@ import { signLnurlAuth } from '../core/keys/lnurlAuth';
 import { getPref, setPref } from '../core/state';
 
 // The ONLY kinds a section may have the identity sign (Hunch protocol write path:
-// orders / disputes / reputation). Never extend casually — this list is the seam's
-// blast-radius guard (no kind-0 metadata, no kind-4 DMs, no arbitrary notes).
-const HUNCH_SIGNABLE_KINDS = new Set([38888, 30890, 30891]);
+// markets / orders / disputes / reputation). Never extend casually — this list is
+// the seam's blast-radius guard (no kind-0 metadata, no kind-4 DMs, no notes).
+const HUNCH_SIGNABLE_KINDS = new Set([30888, 38888, 30890, 30891]);
 
 // Host-side namespace for the section store capability.
 const STORE_NS = 'section.';

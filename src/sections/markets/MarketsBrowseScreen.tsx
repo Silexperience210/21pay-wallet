@@ -66,6 +66,9 @@ export function MarketsBrowseScreen(): React.ReactElement {
           <SecondaryButton label={t('markets.positions')} onPress={() => router.push('/(sections)/markets/positions')} />
         </View>
       </View>
+      <View style={styles.createRow}>
+        <SecondaryButton label={t('markets.createEntry')} onPress={() => router.push('/(sections)/markets/create')} />
+      </View>
       {err ? <Text style={styles.err}>{err}</Text> : null}
       <ScrollView
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.color.accent} />}
@@ -104,7 +107,8 @@ export function MarketsBrowseScreen(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.md, marginBottom: theme.space.md },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.md, marginBottom: theme.space.sm },
+  createRow: { marginBottom: theme.space.md },
   headerBtn: { flex: 1 },
   netBadge: {
     flexDirection: 'row',

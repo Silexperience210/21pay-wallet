@@ -18,7 +18,7 @@ import {
   type Reputation,
 } from './hunch';
 import { buildOrderBook, impliedOdds } from './orderbook';
-import { buildOrderTemplate } from './build';
+import { buildOrderTemplate, buildMarketTemplate } from './build';
 
 const PK = 'a'.repeat(64);
 const MID = marketId(PK, 'will-btc-100k');
@@ -63,6 +63,24 @@ describe('hunch parsers (wire format)', () => {
     expect(o).toMatchObject({ market: MID, side: 'YES', amount: 1000, price: 65, kind: 'bid' });
     const badTags = tpl.tags.map((t) => (t[0] === 'side' ? ['side', 'MAYBE'] : t));
     expect(parseOrderEvent(ev({ kind: KIND_ORDER, tags: badTags }))).toBeNull();
+  });
+
+  it('market template round-trips through parseMarketEvent (create path)', () => {
+    const tpl = buildMarketTemplate({
+      slug: 'btc-100k-x1',
+      oracle: 'b'.repeat(64),
+      expiry: 2_000_000_000,
+      mint: 'https://mint-signet.21pay.org',
+      dlcContract: 'hip-2',
+      question: 'BTC > 100k?',
+      resolution: 'closing price',
+    });
+    const m = parseMarketEvent(ev({ kind: KIND_MARKET, tags: tpl.tags, content: tpl.content }));
+    expect(m).not.toBeNull();
+    expect(m!.d).toBe('btc-100k-x1');
+    expect(m!.outcomes).toEqual(['YES', 'NO', 'INVALID']);
+    expect(m!.refundTimeout).toBe(2_000_000_000 + 7 * 24 * 3600); // expiry + 7d default
+    expect(m!.content.question).toBe('BTC > 100k?');
   });
 
   it('order template round-trips and carries d == market (#d-filterable)', () => {

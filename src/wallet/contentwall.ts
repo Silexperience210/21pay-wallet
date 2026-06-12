@@ -235,6 +235,83 @@ export async function createArticleItem(
   return res.data;
 }
 
+export type MediaContentType = 'image' | 'audio' | 'video' | 'bundle';
+
+/** POST /items (admin key) — create a MEDIA item shell (image/audio/video/bundle).
+ *  The actual file(s) are pushed right after via uploadItemFile. */
+export async function createMediaItem(
+  cfg: CustodialLnbitsConfig,
+  opts: { title: string; amountSat: number; contentType: MediaContentType; teaser?: string },
+): Promise<ContentwallItem> {
+  if (!opts.title.trim()) throw new Error('title required');
+  if (!Number.isInteger(opts.amountSat) || opts.amountSat < 1) throw new Error('amount must be >= 1 sat');
+  const res = await httpRequest<ContentwallItem>({
+    baseUrl: LNBITS_URL(),
+    path: `${API}/items`,
+    method: 'POST',
+    body: {
+      title: opts.title.trim(),
+      description: '',
+      content_type: opts.contentType,
+      amount: opts.amountSat,
+      currency: 'sat',
+      memo: opts.title.trim().slice(0, 64),
+      ...(opts.teaser ? { teaser_text: opts.teaser } : {}),
+    },
+    headers: keyHeaders(cfg.adminKey),
+    idempotent: false,
+  });
+  return res.data;
+}
+
+export interface PickedFile {
+  uri: string;
+  name: string;
+  mimeType?: string;
+}
+
+/** Multipart upload of a picked file to the right extension endpoint by type:
+ *  image → /upload · audio/video → /upload-media · bundle → /files (repeatable).
+ *  Field name is `upload_file` (FastAPI UploadFile); the server validates the real
+ *  content by MAGIC BYTES, not the client mime (mobile mimes are unreliable —
+ *  handled extension-side by design). Uses fetch directly (core/net httpRequest
+ *  is JSON-only). */
+export async function uploadItemFile(
+  cfg: CustodialLnbitsConfig,
+  itemId: string,
+  contentType: MediaContentType,
+  file: PickedFile,
+): Promise<void> {
+  const endpoint =
+    contentType === 'image'
+      ? `${API}/items/${encodeURIComponent(itemId)}/upload`
+      : contentType === 'bundle'
+        ? `${API}/items/${encodeURIComponent(itemId)}/files`
+        : `${API}/items/${encodeURIComponent(itemId)}/upload-media`;
+  const form = new FormData();
+  // React Native FormData file part: { uri, name, type }.
+  form.append('upload_file', {
+    uri: file.uri,
+    name: file.name || 'upload.bin',
+    type: file.mimeType || 'application/octet-stream',
+  } as unknown as Blob);
+  const res = await fetch(`${LNBITS_URL()}${endpoint}`, {
+    method: 'POST',
+    headers: { 'X-Api-Key': cfg.adminKey }, // Content-Type set by fetch (boundary)
+    body: form,
+  });
+  if (!res.ok) {
+    let detail = `upload failed (${res.status})`;
+    try {
+      const body = (await res.json()) as { detail?: string };
+      if (body?.detail) detail = body.detail;
+    } catch {
+      /* keep status message */
+    }
+    throw new Error(detail);
+  }
+}
+
 /** GET /stats/items/{id} (invoice key). */
 export async function getItemStats(cfg: CustodialLnbitsConfig, itemId: string): Promise<ItemStats | null> {
   try {
