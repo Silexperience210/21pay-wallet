@@ -2,6 +2,18 @@
 import { CustodialLnbits } from './custodialLnbits';
 import * as net from '../../core/net';
 
+jest.mock('../boltz/repository', () => ({
+  __esModule: true,
+  openBoltzDb: jest.fn(),
+  upsertSwap: jest.fn(),
+  getSwap: jest.fn(),
+  updateSwapStatus: jest.fn(),
+  updateSwapLockupTx: jest.fn(),
+  updateSwapClaimTx: jest.fn(),
+  listPendingSwaps: jest.fn().mockResolvedValue([]),
+  listSwaps: jest.fn().mockResolvedValue([]),
+}));
+
 const cfg = {
   baseUrl: 'https://lnbits.test',
   adminKey: 'ADMIN-KEY-supersecret-xyz',
@@ -111,8 +123,12 @@ describe('CustodialLnbits', () => {
       ],
     }));
     const { txs } = await new CustodialLnbits(cfg).listTransactions();
-    expect(txs[0]).toMatchObject({ status: 'pending', createdAt: 1718000000 * 1000 });
-    expect(txs[1]).toMatchObject({ status: 'settled' });
+    expect(txs).toHaveLength(2);
+    expect(txs.find((t) => t.status === 'pending')).toMatchObject({
+      status: 'pending',
+      createdAt: 1718000000 * 1000,
+    });
+    expect(txs.find((t) => t.status === 'settled')).toMatchObject({ status: 'settled' });
   });
 
   it('never leaks the admin key in an error message', async () => {

@@ -7,6 +7,7 @@ import type { PaymentStatus, WalletCapabilities, WalletTx } from '../types';
 import { httpRequest, enqueue } from '../../core/net';
 import type { CustodialLnbitsConfig } from '../lnbitsConfig';
 import type { BoltzSwapService } from '../boltz';
+import { listSwaps } from '../boltz/repository';
 import { mapLnbitsToStatus, transition } from './paymentStateMachine';
 
 // LNbits v1 replaced the boolean `pending` with a `status` string ('success' |
@@ -159,7 +160,7 @@ export class CustodialLnbits implements WalletBackend {
       apiKey: this.cfg.readKey,
       idempotent: true,
     });
-    const txs: WalletTx[] = (res.data ?? []).map((p) => ({
+    const lnTxs: WalletTx[] = (res.data ?? []).map((p) => ({
       id: p.payment_hash,
       paymentHash: p.payment_hash,
       direction: p.amount < 0 ? 'out' : 'in',
@@ -168,21 +169,75 @@ export class CustodialLnbits implements WalletBackend {
       createdAt: parsePaymentTimeMs(p),
       memo: p.memo,
     }));
-    return { txs };
+
+    // Include Boltz swaps in the custodial history. Reverse swaps are shown as outgoing
+    // on-chain transactions; submarine swaps are shown only while pending (once settled,
+    // the corresponding Lightning invoice payment appears in LNbits history).
+    const swaps = await listSwaps(200);
+    const swapTxs: WalletTx[] = swaps
+      .filter((s) => s.direction === 'reverse' || !this.isSwapSettled(s.status))
+      .map((s) => ({
+        id: `boltz:${s.id}`,
+        paymentHash: s.preimageHash || s.id,
+        direction: s.direction === 'reverse' ? 'out' : 'in',
+        amountSat: s.direction === 'reverse' ? s.onchainAmount ?? 0 : s.expectedAmount ?? 0,
+        status: this.mapBoltzStatus(s.status, s.expiresAt),
+        createdAt: s.createdAt,
+        memo: s.direction === 'reverse' ? `On-chain send${s.claimTxId ? ` · ${s.claimTxId.slice(0, 8)}` : ''}` : 'On-chain deposit',
+      }));
+
+    const all = [...lnTxs, ...swapTxs].sort((a, b) => b.createdAt - a.createdAt);
+    return { txs: all };
+  }
+
+  private isSwapSettled(status: string): boolean {
+    return status === 'invoice.settled' || status === 'transaction.claimed' || status === 'transaction.refunded';
+  }
+
+  private mapBoltzStatus(status: string, expiresAt: number): PaymentStatus {
+    if (status === 'invoice.settled' || status === 'transaction.claimed') return 'settled';
+    if (status === 'swap.expired' || status === 'invoice.expired' || Date.now() > expiresAt) return 'expired';
+    if (status === 'invoice.failedToPay' || status === 'transaction.refunded' || status === 'transaction.lockupFailed') {
+      return 'failed';
+    }
+    return 'pending';
+  }
+
+  /** Poll a Boltz swap and advance it to its terminal state. */
+  async reconcileSwap(swapId: string): Promise<PaymentStatus> {
+    if (!this.boltz) throw new Error('on-chain unavailable');
+    return this.boltz.reconcileSwap(swapId);
   }
 
   /** On-chain receive: present a Boltz HTLC address that settles into Lightning. */
-  async getOnchainAddress(amountSat?: number): Promise<{ address: string }> {
+  async getOnchainAddress(amountSat?: number): Promise<{ address: string; swapId: string }> {
     if (!this.boltz) throw new Error('on-chain unavailable');
     if (amountSat == null || amountSat <= 0) throw new Error('on-chain receive requires an amount');
-    const { address } = await this.boltz.getDepositAddress(amountSat);
-    return { address };
+    const { address, swapId } = await this.boltz.getDepositAddress(amountSat);
+    return { address, swapId };
   }
 
   /** On-chain send: swap Lightning sats out to a Bitcoin address via Boltz. */
-  async sendOnchain(address: string, amountSat: number, feeRate?: number): Promise<{ txid: string }> {
+  async sendOnchain(
+    address: string,
+    amountSat: number,
+    feeRate?: number,
+    onProgress?: (step: 'creating' | 'payingHold' | 'awaitingLockup' | 'claiming' | 'broadcasting' | 'done') => void,
+  ): Promise<{ txid: string }> {
     if (!this.boltz) throw new Error('on-chain unavailable');
-    return this.boltz.swapOut(address, amountSat, feeRate);
+    return this.boltz.swapOut(address, amountSat, feeRate, onProgress);
+  }
+
+  /** Preview fees and limits for receiving on-chain. */
+  async getOnchainReceiveQuote(amountSat: number): Promise<{ min: number; max: number; expectedAmount: number; feeSat: number }> {
+    if (!this.boltz) throw new Error('on-chain unavailable');
+    return this.boltz.getSubmarineQuote(amountSat);
+  }
+
+  /** Preview fees, limits and final on-chain amount for sending. */
+  async getOnchainSendQuote(amountSat: number): Promise<{ min: number; max: number; onchainAmount: number; feeSat: number }> {
+    if (!this.boltz) throw new Error('on-chain unavailable');
+    return this.boltz.getReverseQuote(amountSat);
   }
 
   /** Poll LNbits and advance a pending payment to its terminal state (WALLET-09). */

@@ -13,14 +13,24 @@ export interface WalletBackend {
   payLnAddress(addr: string, amountSat: number): Promise<{ preimage: string; paymentHash?: string }>;
 
   // Capability-gated on-chain methods (present only when capabilities.onchain).
-  getOnchainAddress?(amountSat?: number): Promise<{ address: string }>;
-  sendOnchain?(address: string, amountSat: number, feeRate?: number): Promise<{ txid: string }>;
+  getOnchainAddress?(amountSat?: number): Promise<{ address: string; swapId?: string }>;
+  sendOnchain?(
+    address: string,
+    amountSat: number,
+    feeRate?: number,
+    onProgress?: (step: 'creating' | 'payingHold' | 'awaitingLockup' | 'claiming' | 'broadcasting' | 'done') => void,
+  ): Promise<{ txid: string }>;
+  getOnchainReceiveQuote?(amountSat: number): Promise<{ min: number; max: number; expectedAmount: number; feeSat: number }>;
+  getOnchainSendQuote?(amountSat: number): Promise<{ min: number; max: number; onchainAmount: number; feeSat: number }>;
 
   listTransactions(cursor?: string): Promise<{ txs: WalletTx[]; next?: string }>;
 
   // Advance a payment to its terminal WALLET-09 state by polling the backend.
   // Optional: synchronous backends may settle on the pay call itself.
   reconcile?(paymentHash: string, from?: PaymentStatus, expiresAt?: number): Promise<PaymentStatus>;
+
+  // Advance a Boltz swap to its terminal state. Only present for on-chain-capable backends.
+  reconcileSwap?(swapId: string): Promise<PaymentStatus>;
 
   // Capability-gated: produce an LNURL-withdraw link to present as an HCE card so a
   // terminal can PULL a payment (BoltCard-style tap-to-pay). Needs the LNbits

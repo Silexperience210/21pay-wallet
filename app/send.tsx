@@ -23,12 +23,30 @@ import { parsePaymentInput, decodeBolt11Amount } from '@/wallet/parse';
 import { formatSats } from '@/wallet/format';
 import { useWalletStore } from '@/core/state';
 import { t } from '@/i18n';
+import { validateOnchainAddress, loadBoltzConfig, parseBoltzError } from '@/wallet/boltz';
 
 const FEE_RATES: FeeRate[] = [
   { label: 'Slow', satPerVb: 1 },
   { label: 'Medium', satPerVb: 5 },
   { label: 'Fast', satPerVb: 15 },
 ];
+
+interface OnchainSendQuote {
+  min: number;
+  max: number;
+  onchainAmount: number;
+  feeSat: number;
+  percentage: number;
+  minerFees: number;
+}
+
+type SwapStep =
+  | 'creating'
+  | 'payingHold'
+  | 'awaitingLockup'
+  | 'claiming'
+  | 'broadcasting'
+  | 'done';
 
 export default function SendScreen(): React.ReactElement {
   const wallet = useWallet();
@@ -44,12 +62,25 @@ export default function SendScreen(): React.ReactElement {
   const [status, setStatus] = useState<PaymentStatus | null>(null);
   const [bounds, setBounds] = useState<{ min?: number; max?: number }>({});
   const [resolving, setResolving] = useState(false);
+  const [quote, setQuote] = useState<OnchainSendQuote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [swapStep, setSwapStep] = useState<SwapStep | null>(null);
+  const [addressError, setAddressError] = useState<string | null>(null);
 
-  const detected = parsePaymentInput(destination).kind;
+  const parsed = parsePaymentInput(destination);
+  const detected = parsed.kind;
   const isOnchain = detected === 'onchain' || detected === 'bip21';
   const isLnurlish = detected === 'lnaddr' || detected === 'lnurl';
   const needsAmount = isLnurlish || isOnchain;
   const invoiceAmount = detected === 'bolt11' ? decodeBolt11Amount(destination) : null;
+  const onchainAddress = parsed.kind === 'bip21' ? parsed.address : destination;
+
+  // Pre-fill amount from BIP21 URI if the user hasn't already typed one.
+  useEffect(() => {
+    if (parsed.kind === 'bip21' && parsed.amountSat != null && amountSat == null) {
+      setAmountSat(parsed.amountSat);
+    }
+  }, [parsed, amountSat]);
 
   // Resolve LNURL-pay bounds so AmountInput can enforce min/max BEFORE paying (WALLET-03).
   useEffect(() => {
@@ -70,6 +101,49 @@ export default function SendScreen(): React.ReactElement {
     };
   }, [destination, isLnurlish]);
 
+  // Validate on-chain address and fetch quote when amount/destination change.
+  useEffect(() => {
+    setQuote(null);
+    setAddressError(null);
+    if (!isOnchain || !wallet.getOnchainSendQuote) return;
+
+    const address = onchainAddress.trim();
+    if (!address) return;
+
+    let network: 'bitcoin' | 'regtest';
+    try {
+      network = loadBoltzConfig().network === 'regtest' ? 'regtest' : 'bitcoin';
+    } catch {
+      network = 'bitcoin';
+    }
+    if (!validateOnchainAddress(address, network)) {
+      setAddressError(t('send.onchainErr.invalidAddress'));
+      return;
+    }
+
+    if (!amountSat || amountSat < 1) return;
+    let cancelled = false;
+    setQuoteLoading(true);
+    wallet
+      .getOnchainSendQuote(amountSat)
+      .then((q) => {
+        if (!cancelled) setQuote(q as OnchainSendQuote);
+      })
+      .catch((e: Error) => {
+        if (!cancelled) {
+          const { key, params } = parseBoltzError(e);
+          setQuote(null);
+          setAddressError(t(key, params));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setQuoteLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [destination, amountSat, isOnchain, wallet, onchainAddress]);
+
   const inRange =
     amountSat == null
       ? false
@@ -78,7 +152,7 @@ export default function SendScreen(): React.ReactElement {
   const payable =
     detected === 'bolt11' ||
     (isLnurlish && amountSat != null && amountSat > 0 && inRange) ||
-    (isOnchain && amountSat != null && amountSat > 0 && !!wallet.sendOnchain);
+    (isOnchain && amountSat != null && amountSat > 0 && !!wallet.sendOnchain && !addressError && !!quote);
 
   const refreshBalance = async () => {
     if (!activeBackendKind) return;
@@ -103,10 +177,16 @@ export default function SendScreen(): React.ReactElement {
       } else if (isLnurlish) {
         ({ paymentHash } = await wallet.payLnAddress(destination, amountSat ?? 0));
       } else if (isOnchain) {
-        const addr = parsePaymentInput(destination);
-        const address = addr.kind === 'bip21' ? addr.address : destination;
+        const address = parsed.kind === 'bip21' ? parsed.address : destination;
         if (!wallet.sendOnchain) throw new Error('On-chain not supported by this wallet.');
-        await wallet.sendOnchain(address, amountSat ?? 0, feeRate);
+        setSwapStep('creating');
+        const { txid } = await wallet.sendOnchain(address, amountSat ?? 0, feeRate, (step) => {
+          if (step !== 'done') setSwapStep(step);
+        });
+        setSwapStep('done');
+        await refreshBalance();
+        setStatus('settled');
+        return;
       } else {
         throw new Error('Unknown destination.');
       }
@@ -123,10 +203,28 @@ export default function SendScreen(): React.ReactElement {
       await refreshBalance();
       setStatus(final);
     } catch (e) {
-      const msg = (e as Error)?.message?.toLowerCase() ?? '';
-      setStatus(msg.includes('expired') ? 'expired' : 'failed');
+      const { key } = parseBoltzError(e);
+      if (key === 'send.onchainErr.expired') setStatus('expired');
+      else setStatus('failed');
+    } finally {
+      setSwapStep(null);
     }
   };
+
+  const statusTitle =
+    isOnchain && swapStep != null
+      ? swapStep === 'creating'
+        ? t('send.onchainCreating')
+        : swapStep === 'payingHold'
+          ? t('send.onchainPayingHold')
+          : swapStep === 'awaitingLockup'
+            ? t('send.onchainAwaitingLockup')
+            : swapStep === 'claiming'
+              ? t('send.onchainClaiming')
+              : swapStep === 'broadcasting'
+                ? t('send.onchainBroadcast')
+                : t('send.onchainDone')
+      : undefined;
 
   const cta =
     detected === 'bolt11'
@@ -154,6 +252,7 @@ export default function SendScreen(): React.ReactElement {
       {status ? (
         <PaymentStatusSheet
           status={status}
+          title={statusTitle}
           onClose={() => {
             if (status === 'settled') router.back();
             else setStatus(null);
@@ -177,6 +276,25 @@ export default function SendScreen(): React.ReactElement {
           {isOnchain ? (
             <>
               <FeeRateChips value={feeRate} onChange={setFeeRate} rates={FEE_RATES} />
+
+              {addressError ? (
+                <Text style={styles.warn}>{addressError}</Text>
+              ) : quote ? (
+                <View style={styles.quoteBox}>
+                  <Text style={styles.quoteLine}>{t('send.onchainLimits', { min: quote.min, max: quote.max })}</Text>
+                  <Text style={styles.quoteLine}>
+                    {t('send.onchainFee', { fee: quote.feeSat, pct: quote.percentage })}
+                  </Text>
+                  <Text style={styles.quoteLine}>
+                    {t('send.onchainReceiveAmount', { amount: quote.onchainAmount })}
+                  </Text>
+                </View>
+              ) : quoteLoading ? (
+                <Text style={styles.note}>{t('send.resolving')}</Text>
+              ) : amountSat && amountSat > 0 ? (
+                <Text style={styles.note}>{t('send.onchainLimits', { min: '?', max: '?' })}</Text>
+              ) : null}
+
               <Text style={styles.warn}>{t('send.onchainWarn')}</Text>
             </>
           ) : null}
@@ -191,6 +309,7 @@ export default function SendScreen(): React.ReactElement {
               if (payable) pay();
             }}
             destructive={isOnchain}
+            disabled={!payable}
           />
           {!payable ? <Text style={styles.disabledHint}>{t('send.disabledHint')}</Text> : null}
         </View>
@@ -205,4 +324,11 @@ const styles = StyleSheet.create({
   note: { fontFamily: theme.font.mono.fontFamily, fontSize: 14, color: theme.color.textMuted, textAlign: 'center' },
   warn: { fontFamily: theme.font.label.fontFamily, fontSize: 13, color: theme.color.destructive, textAlign: 'center' },
   disabledHint: { fontFamily: theme.font.body.fontFamily, fontSize: 13, color: theme.color.textMuted, textAlign: 'center' },
+  quoteBox: {
+    backgroundColor: theme.color.cardFill,
+    borderRadius: theme.radius.md,
+    padding: theme.space.lg,
+    gap: theme.space.sm,
+  },
+  quoteLine: { fontFamily: theme.font.label.fontFamily, fontSize: 14, color: theme.color.text },
 });

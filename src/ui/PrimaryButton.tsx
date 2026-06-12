@@ -12,11 +12,13 @@ export function PrimaryButton({
   onPress,
   loading,
   destructive,
+  disabled,
 }: {
   label: string;
   onPress: () => void;
   loading?: boolean;
   destructive?: boolean;
+  disabled?: boolean;
 }): React.ReactElement {
   const reduced = useReducedMotion();
   const scale = useSharedValue(1);
@@ -31,7 +33,7 @@ export function PrimaryButton({
         if (!reduced) scale.value = withSpring(1);
       }}
       onPress={onPress}
-      disabled={loading}
+      disabled={loading || disabled}
       hitSlop={8}
       accessibilityRole="button"
       accessibilityLabel={label}

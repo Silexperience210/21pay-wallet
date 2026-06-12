@@ -168,6 +168,7 @@ export interface SwapQuote {
   minerFees: number;
   min: number;
   max: number;
+  feeSat: number;
 }
 
 export interface ReverseSwapQuote extends Omit<SwapQuote, 'minerFees'> {

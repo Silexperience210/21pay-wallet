@@ -167,11 +167,24 @@ export function createMuSig2Session(
 }
 
 export function toOutputScript(address: string, network: 'bitcoin' | 'regtest'): Uint8Array {
-  const net =
-    network === 'regtest'
-      ? { bech32: 'bcrt', pubKeyHash: 0x6f, scriptHash: 0xc4, wif: 0xef }
-      : { bech32: 'bc', pubKeyHash: 0x00, scriptHash: 0x05, wif: 0x80 };
+  const net = networkFor(network);
   const decoded = Address(net).decode(address);
   if (!decoded) throw new Error(`unsupported or invalid address: ${address}`);
   return OutScript.encode(decoded);
+}
+
+export function validateOnchainAddress(address: string, network: 'bitcoin' | 'regtest'): boolean {
+  try {
+    const net = networkFor(network);
+    const decoded = Address(net).decode(address);
+    return decoded != null;
+  } catch {
+    return false;
+  }
+}
+
+function networkFor(network: 'bitcoin' | 'regtest') {
+  return network === 'regtest'
+    ? { bech32: 'bcrt', pubKeyHash: 0x6f, scriptHash: 0xc4, wif: 0xef }
+    : { bech32: 'bc', pubKeyHash: 0x00, scriptHash: 0x05, wif: 0x80 };
 }

@@ -31,6 +31,7 @@ import type {
   SubmarinePair,
   SwapAsset,
   SwapDirection,
+  SwapQuote,
 } from './types';
 
 const SWAP_LIFETIME_MS = 60 * 60 * 1000; // 1 hour; Boltz default invoice expiry
@@ -38,6 +39,15 @@ const DEFAULT_FEE_RATE = 5; // sats/vbyte
 
 function nowMs(): number {
   return Date.now();
+}
+
+export class BoltzLimitError extends Error {
+  constructor(
+    readonly min: number,
+    readonly max: number,
+  ) {
+    super(`amount outside Boltz limits (${min}-${max} sats)`);
+  }
 }
 
 export class BoltzSwapService {
@@ -114,12 +124,49 @@ export class BoltzSwapService {
     return swap;
   }
 
+  /** Quote for receiving on-chain (submarine swap). */
+  async getSubmarineQuote(amountSat: number): Promise<SwapQuote & { expectedAmount: number }> {
+    const pair = await this.getSubmarinePair();
+    if (amountSat < pair.limits.minimal || amountSat > pair.limits.maximal) {
+      throw new BoltzLimitError(pair.limits.minimal, pair.limits.maximal);
+    }
+    const serviceFee = Math.ceil((amountSat * pair.fees.percentage) / 100);
+    return {
+      pairHash: pair.hash,
+      percentage: pair.fees.percentage,
+      minerFees: pair.fees.minerFees,
+      min: pair.limits.minimal,
+      max: pair.limits.maximal,
+      expectedAmount: amountSat,
+      feeSat: serviceFee + pair.fees.minerFees,
+    };
+  }
+
+  /** Quote for sending on-chain (reverse swap). */
+  async getReverseQuote(amountSat: number): Promise<SwapQuote & { onchainAmount: number }> {
+    const pair = await this.getReversePair();
+    if (amountSat < pair.limits.minimal || amountSat > pair.limits.maximal) {
+      throw new BoltzLimitError(pair.limits.minimal, pair.limits.maximal);
+    }
+    const serviceFee = Math.ceil((amountSat * pair.fees.percentage) / 100);
+    const onchainAmount = amountSat - serviceFee - pair.fees.minerFees.lockup - pair.fees.minerFees.claim;
+    return {
+      pairHash: pair.hash,
+      percentage: pair.fees.percentage,
+      minerFees: pair.fees.minerFees.lockup + pair.fees.minerFees.claim,
+      min: pair.limits.minimal,
+      max: pair.limits.maximal,
+      onchainAmount: Math.max(0, onchainAmount),
+      feeSat: serviceFee + pair.fees.minerFees.lockup + pair.fees.minerFees.claim,
+    };
+  }
+
   /** Receive on-chain BTC and settle into Lightning (submarine swap). */
   async getDepositAddress(amountSat: number): Promise<{ address: string; swapId: string }> {
     if (amountSat <= 0) throw new Error('amount must be positive');
     const pair = await this.getSubmarinePair();
     if (amountSat < pair.limits.minimal || amountSat > pair.limits.maximal) {
-      throw new Error(`amount outside Boltz limits (${pair.limits.minimal}-${pair.limits.maximal} sats)`);
+      throw new BoltzLimitError(pair.limits.minimal, pair.limits.maximal);
     }
 
     const { bolt11 } = await this.lnbits.createInvoice(amountSat, 'Boltz on-chain deposit');
@@ -156,11 +203,16 @@ export class BoltzSwapService {
   }
 
   /** Send Lightning sats to an on-chain address (reverse swap). */
-  async swapOut(destinationAddress: string, amountSat: number, feeRate = DEFAULT_FEE_RATE): Promise<{ txid: string }> {
+  async swapOut(
+    destinationAddress: string,
+    amountSat: number,
+    feeRate = DEFAULT_FEE_RATE,
+    onProgress?: (step: 'creating' | 'payingHold' | 'awaitingLockup' | 'claiming' | 'broadcasting' | 'done') => void,
+  ): Promise<{ txid: string }> {
     if (amountSat <= 0) throw new Error('amount must be positive');
     const pair = await this.getReversePair();
     if (amountSat < pair.limits.minimal || amountSat > pair.limits.maximal) {
-      throw new Error(`amount outside Boltz limits (${pair.limits.minimal}-${pair.limits.maximal} sats)`);
+      throw new BoltzLimitError(pair.limits.minimal, pair.limits.maximal);
     }
 
     const keyIndex = this.nextKeyIndex();
@@ -196,10 +248,12 @@ export class BoltzSwapService {
       );
 
       // Pay the Boltz hold invoice immediately to lock the on-chain funds.
+      onProgress?.('payingHold');
       await this.lnbits.payInvoice(res.invoice);
 
       // Wait for Boltz to broadcast the lockup tx, then claim cooperatively.
-      return this.waitAndClaimReverseSwap(res.id, destinationAddress, feeRate);
+      onProgress?.('awaitingLockup');
+      return this.waitAndClaimReverseSwap(res.id, destinationAddress, feeRate, onProgress);
     });
   }
 
@@ -207,13 +261,15 @@ export class BoltzSwapService {
     swapId: string,
     destinationAddress: string,
     feeRate: number,
+    onProgress?: (step: 'creating' | 'payingHold' | 'awaitingLockup' | 'claiming' | 'broadcasting' | 'done') => void,
     maxAttempts = 40,
   ): Promise<{ txid: string }> {
     for (let i = 0; i < maxAttempts; i++) {
       const status = await this.client.getSwapStatus(swapId);
       await this.handleStatusUpdate(repository.getSwap(swapId)!, status.status);
       if (status.status === 'transaction.mempool' || status.status === 'transaction.confirmed') {
-        return this.claimReverseSwap(swapId, destinationAddress, feeRate);
+        onProgress?.('claiming');
+        return this.claimReverseSwap(swapId, destinationAddress, feeRate, onProgress);
       }
       if (
         status.status === 'swap.expired' ||
@@ -288,7 +344,12 @@ export class BoltzSwapService {
     }
   }
 
-  private async claimReverseSwap(swapId: string, destinationAddress: string, feeRate: number): Promise<{ txid: string }> {
+  private async claimReverseSwap(
+    swapId: string,
+    destinationAddress: string,
+    feeRate: number,
+    onProgress?: (step: 'creating' | 'payingHold' | 'awaitingLockup' | 'claiming' | 'broadcasting' | 'done') => void,
+  ): Promise<{ txid: string }> {
     const swap = repository.getSwap(swapId);
     if (!swap || swap.direction !== 'reverse') throw new Error('not a reverse swap');
 
@@ -327,6 +388,7 @@ export class BoltzSwapService {
       );
 
       // Compute the sighash for the key-path spend and generate our nonce.
+      onProgress?.('claiming');
       const sighash = tx.preimageWitnessV1(0, [output.script], SigHash.DEFAULT, [output.amount]);
       const ourNonce = generateOurNonce(privateKey, boltzPubkey, coreTree, sighash);
 
@@ -349,9 +411,11 @@ export class BoltzSwapService {
       const finalWitness = session.aggregatePartials();
 
       tx.updateInput(0, { finalScriptWitness: [finalWitness] });
+      onProgress?.('broadcasting');
       const broadcasted = await this.client.broadcastTransaction(this.cfg.pair.to, hex.encode(tx.extract()));
       repository.updateSwapClaimTx(swapId, broadcasted.id);
       repository.updateSwapStatus(swapId, 'transaction.claimed');
+      onProgress?.('done');
       return { txid: broadcasted.id };
     });
   }

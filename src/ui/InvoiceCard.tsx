@@ -13,11 +13,15 @@ const QR_SIZE = 220;
 export function InvoiceCard({
   data,
   kind,
+  qrValue,
+  copyLabel,
 }: {
   data: string;
   kind: 'bolt11' | 'onchain';
+  qrValue?: string;
+  copyLabel?: string;
 }): React.ReactElement {
-  const label = kind === 'bolt11' ? 'Lightning invoice' : 'On-chain address';
+  const label = copyLabel ?? (kind === 'bolt11' ? 'Lightning invoice' : 'On-chain address');
   return (
     <MotiView
       from={{ opacity: 0, scale: 0.9 }}
@@ -26,7 +30,7 @@ export function InvoiceCard({
       style={styles.wrap}
     >
       <View style={styles.qrCard}>
-        <QRCode value={data} size={QR_SIZE} color={theme.color.bg} padding={0} />
+        <QRCode value={qrValue ?? data} size={QR_SIZE} color={theme.color.bg} padding={0} />
       </View>
       <CopyField value={data} label={label} />
     </MotiView>

@@ -26,15 +26,18 @@ const copyFor = (status: PaymentStatus): { title: string; body: string } => ({
 export function PaymentStatusSheet({
   status,
   detail,
+  title,
   onClose,
 }: {
   status: PaymentStatus;
   detail?: string;
+  title?: string;
   onClose?: () => void;
 }): React.ReactElement {
   const reduced = useReducedMotion();
   const shake = useSharedValue(0);
   const copy = copyFor(status);
+  const displayTitle = title ?? copy.title;
 
   useEffect(() => {
     if (status === 'settled') {
@@ -77,7 +80,7 @@ export function PaymentStatusSheet({
           style={styles.node}
         >
           <View style={[styles.dot, { backgroundColor: dotColor }]} />
-          <Text style={styles.title}>{copy.title}</Text>
+          <Text style={styles.title}>{displayTitle}</Text>
           <Text style={styles.body}>{copy.body}</Text>
           {detail ? <Text style={styles.detail}>{detail}</Text> : null}
         </MotiView>

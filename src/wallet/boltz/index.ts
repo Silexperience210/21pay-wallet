@@ -1,7 +1,9 @@
 // Boltz submarine-swap barrel. Backend integration only — sections still speak
 // the WalletBackend interface and never import concrete swap internals.
-export { BoltzSwapService } from './service';
+export { BoltzSwapService, BoltzLimitError } from './service';
+export { parseBoltzError, parseBoltzReceiveError } from './errorMessage';
 export { loadBoltzConfig, boltzNetworkName } from './config';
+export { validateOnchainAddress } from './crypto';
 export type { BoltzConfig, BoltzNetwork } from './config';
 export type {
   BoltzStatus,
