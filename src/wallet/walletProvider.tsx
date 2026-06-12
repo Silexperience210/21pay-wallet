@@ -25,6 +25,7 @@ import {
 import { useWalletStore, insertTx, getPref, setPref, clearTxByBackend } from '../core/state';
 import { cryptoSelfTest, generateMnemonic, storeMnemonic, hasMnemonic, loadSparkSeed } from '../core/keys';
 import { buildSparkConfig } from './sparkConfig';
+import { BoltzSwapService, loadBoltzConfig } from './boltz';
 
 // Non-secret one-way change-token over a wallet credential. Detects when the ACTIVE
 // custodial wallet differs from the one the local tx cache belongs to, so a fresh or
@@ -57,7 +58,16 @@ let activeCustodialConfig: CustodialLnbitsConfig | null = null;
 let activeSparkConfig: SparkConfig | null = null;
 
 export function activateCustodial(config: CustodialLnbitsConfig): WalletBackend {
-  active = new CustodialLnbits(config);
+  const backend = new CustodialLnbits(config);
+  try {
+    const boltzCfg = loadBoltzConfig();
+    const boltz = new BoltzSwapService(boltzCfg, backend);
+    void boltz.initialize().catch(() => {});
+    backend.setBoltzService(boltz);
+  } catch {
+    /* Boltz config missing → on-chain remains unavailable */
+  }
+  active = backend;
   activeCustodialConfig = config;
   activeSparkConfig = null;
   // Clear stale history if this is a different wallet than the cache belongs to, so the
@@ -192,7 +202,18 @@ export async function rehydrate(): Promise<WalletBackend | null> {
     }
     // custodial (kind === 'custodial-lnbits' OR legacy null marker): restore the LNbits config
     const config = await loadPersistedCustodialConfig();
-    return config ? activateCustodial(config) : null;
+    if (!config) return null;
+    const backend = activateCustodial(config);
+    const lnbits = backend as CustodialLnbits;
+    try {
+      const boltzCfg = loadBoltzConfig();
+      const boltz = new BoltzSwapService(boltzCfg, lnbits);
+      await boltz.initialize();
+      await boltz.restorePendingSwaps();
+    } catch {
+      /* ignore — on-chain unavailable */
+    }
+    return backend;
   } catch {
     return null; // degrade to onboarding, never crash the launch
   }

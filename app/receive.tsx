@@ -85,10 +85,14 @@ export default function ReceiveScreen(): React.ReactElement {
 
   const showAddress = async () => {
     if (!wallet.getOnchainAddress) return;
+    if (!amountSat || amountSat < 1) {
+      setErr(t('receive.amountRequired'));
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {
-      const { address: addr } = await wallet.getOnchainAddress();
+      const { address: addr } = await wallet.getOnchainAddress(amountSat);
       setAddress(addr);
     } catch {
       setErr(t('receive.backendErr'));
@@ -149,6 +153,7 @@ export default function ReceiveScreen(): React.ReactElement {
       ) : (
         <View style={styles.form}>
           <Text style={styles.lead}>{t('receive.onchainLead')}</Text>
+          <AmountInput valueSat={amountSat} onChange={setAmountSat} />
           <SecondaryButton label={t('receive.showAddress')} onPress={showAddress} />
         </View>
       )}

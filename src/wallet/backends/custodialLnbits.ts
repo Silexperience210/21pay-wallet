@@ -6,6 +6,7 @@ import type { WalletBackend } from '../WalletBackend';
 import type { PaymentStatus, WalletCapabilities, WalletTx } from '../types';
 import { httpRequest, enqueue } from '../../core/net';
 import type { CustodialLnbitsConfig } from '../lnbitsConfig';
+import type { BoltzSwapService } from '../boltz';
 import { mapLnbitsToStatus, transition } from './paymentStateMachine';
 
 // LNbits v1 replaced the boolean `pending` with a `status` string ('success' |
@@ -41,7 +42,15 @@ export class CustodialLnbits implements WalletBackend {
   readonly kind = 'custodial-lnbits' as const;
   readonly capabilities: WalletCapabilities = { onchain: true, lnSend: true, lnReceive: true };
 
-  constructor(private readonly cfg: CustodialLnbitsConfig) {}
+  constructor(
+    private readonly cfg: CustodialLnbitsConfig,
+    private boltz?: BoltzSwapService,
+  ) {}
+
+  /** Wire the Boltz swap service after construction (used by walletProvider). */
+  setBoltzService(boltz: BoltzSwapService): void {
+    this.boltz = boltz;
+  }
 
   async getBalance(): Promise<{ lightningSat: number }> {
     const res = await httpRequest<{ balance?: number }>({
@@ -160,6 +169,20 @@ export class CustodialLnbits implements WalletBackend {
       memo: p.memo,
     }));
     return { txs };
+  }
+
+  /** On-chain receive: present a Boltz HTLC address that settles into Lightning. */
+  async getOnchainAddress(amountSat?: number): Promise<{ address: string }> {
+    if (!this.boltz) throw new Error('on-chain unavailable');
+    if (amountSat == null || amountSat <= 0) throw new Error('on-chain receive requires an amount');
+    const { address } = await this.boltz.getDepositAddress(amountSat);
+    return { address };
+  }
+
+  /** On-chain send: swap Lightning sats out to a Bitcoin address via Boltz. */
+  async sendOnchain(address: string, amountSat: number, feeRate?: number): Promise<{ txid: string }> {
+    if (!this.boltz) throw new Error('on-chain unavailable');
+    return this.boltz.swapOut(address, amountSat, feeRate);
   }
 
   /** Poll LNbits and advance a pending payment to its terminal state (WALLET-09). */

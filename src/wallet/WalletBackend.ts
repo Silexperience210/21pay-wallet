@@ -13,7 +13,7 @@ export interface WalletBackend {
   payLnAddress(addr: string, amountSat: number): Promise<{ preimage: string; paymentHash?: string }>;
 
   // Capability-gated on-chain methods (present only when capabilities.onchain).
-  getOnchainAddress?(): Promise<{ address: string }>;
+  getOnchainAddress?(amountSat?: number): Promise<{ address: string }>;
   sendOnchain?(address: string, amountSat: number, feeRate?: number): Promise<{ txid: string }>;
 
   listTransactions(cursor?: string): Promise<{ txs: WalletTx[]; next?: string }>;
