@@ -51,11 +51,16 @@ export function MarketDetailScreen(): React.ReactElement {
       setErr(null);
       // The market event itself (#d IS relay-indexed).
       const evs = await queryRelays(HUNCH_RELAYS, { kinds: [KIND_MARKET], authors: [creator], '#d': [d], limit: 5 });
+      // Replaceable: relays can disagree — keep the NEWEST verified version.
       let m: Market | null = null;
+      let mAt = -1;
       for (const ev of evs) {
         if (!verifyEvent(ev)) continue;
         const parsed = parseMarketEvent(ev);
-        if (parsed && parsed.id === id) m = parsed;
+        if (parsed && parsed.id === id && ev.created_at > mAt) {
+          m = parsed;
+          mAt = ev.created_at;
+        }
       }
       if (!m) {
         setErr(t('markets.notFound'));

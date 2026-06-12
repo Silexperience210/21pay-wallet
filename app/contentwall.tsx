@@ -16,6 +16,7 @@ import {
   createUnlockInvoice,
   pollUnlock,
   fetchPurchases,
+  purchaseContentUrl,
   type PublicItem,
   type ItemPreview,
   type StoredPurchase,
@@ -84,11 +85,8 @@ export default function ContentwallScreen(): React.ReactElement {
       // when the deployed extension predates /public).
       const quote = await createUnlockInvoice(itemId);
       await useWallet().payInvoice(quote.payment_request); // EXPLICIT CTA — never auto
-      const status = await pollUnlock(itemId, quote.payment_hash);
-      if (!status.paid || !status.url) {
-        setErr(t('cw.unlockSlow'));
-        return;
-      }
+      // The payment_hash IS the access proof — persist it the moment the payment
+      // leaves, BEFORE polling: a slow unlock must never lose the purchase.
       const stored: StoredPurchase = {
         itemId,
         paymentHash: quote.payment_hash,
@@ -98,6 +96,11 @@ export default function ContentwallScreen(): React.ReactElement {
       const next = [stored, ...purchases.filter((p) => p.paymentHash !== quote.payment_hash)];
       setPref(PURCHASES_KEY, JSON.stringify(next));
       setPurchases(next);
+      const status = await pollUnlock(itemId, quote.payment_hash);
+      if (!status.paid || !status.url) {
+        setErr(t('cw.unlockSlow')); // the purchase is saved — re-open from the list
+        return;
+      }
       router.push({ pathname: '/contentwall-view', params: { url: status.url, title: stored.title } });
     } catch {
       setErr(t('cw.payErr'));
@@ -109,14 +112,18 @@ export default function ContentwallScreen(): React.ReactElement {
   const onOpenPurchase = async (p: StoredPurchase) => {
     setErr(null);
     try {
-      // A fresh signed URL is minted server-side from the stored payment_hash.
+      // The server returns a fresh access TOKEN for the stored payment_hash;
+      // the signed content URL is built client-side (same as the web UI).
       const found = await fetchPurchases([p.paymentHash]);
-      const url = found[0]?.url;
-      if (!url) {
+      const record = found.find((r) => r.payment_hash === p.paymentHash) ?? found[0];
+      if (!record?.item_id) {
         setErr(t('cw.purchaseGone'));
         return;
       }
-      router.push({ pathname: '/contentwall-view', params: { url, title: p.title } });
+      router.push({
+        pathname: '/contentwall-view',
+        params: { url: purchaseContentUrl(record), title: record.title ?? p.title },
+      });
     } catch {
       setErr(t('cw.backendErr'));
     }

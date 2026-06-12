@@ -23,6 +23,10 @@ export interface BetPosition {
   createdAt: number;
   status: PositionStatus;
   redeemedSat?: number;
+  /** True once `proofs` hold the UNLOCKED (post-redeem) tokens: the redeem step is
+   *  done and only the melt remains. Makes settlement retry-safe — a melt failure
+   *  after a successful redeem must never lose the unlocked proofs. */
+  unlockedProofs?: boolean;
 }
 
 const POSITIONS_KEY = 'markets.positions';
@@ -52,6 +56,14 @@ export async function addPosition(caps: SectionCapabilities, position: BetPositi
 
 export async function loadBettorSecret(caps: SectionCapabilities, positionId: string): Promise<string | null> {
   return caps.store.getSecret(secretKey(positionId));
+}
+
+/** Remove a position entirely — ONLY for aborted stakes where no payment left the
+ *  wallet (the pay call itself failed). Never use once sats moved. */
+export async function removePosition(caps: SectionCapabilities, positionId: string): Promise<void> {
+  const all = await loadPositions(caps);
+  await savePositions(caps, all.filter((p) => p.id !== positionId));
+  await caps.store.deleteSecret(secretKey(positionId)).catch(() => {});
 }
 
 export async function updatePosition(

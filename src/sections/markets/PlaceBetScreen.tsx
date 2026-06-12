@@ -42,14 +42,21 @@ export function PlaceBetScreen(): React.ReactElement {
   const load = useCallback(async () => {
     try {
       const evs = await queryRelays(HUNCH_RELAYS, { kinds: [KIND_MARKET], authors: [creator], '#d': [d], limit: 5 });
+      // Replaceable: keep the NEWEST verified version across relays.
+      let best: Market | null = null;
+      let bestAt = -1;
       for (const ev of evs) {
         if (!verifyEvent(ev)) continue;
         const m = parseMarketEvent(ev);
-        if (m && m.id === id) {
-          setMarket(m);
-          setAnnounce(await fetchAnnounce(HUNCH_RELAYS, m.oracle, id));
-          return;
+        if (m && m.id === id && ev.created_at > bestAt) {
+          best = m;
+          bestAt = ev.created_at;
         }
+      }
+      if (best) {
+        setMarket(best);
+        setAnnounce(await fetchAnnounce(HUNCH_RELAYS, best.oracle, id));
+        return;
       }
       setErr(t('markets.notFound'));
     } catch {

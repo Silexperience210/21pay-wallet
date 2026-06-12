@@ -87,11 +87,13 @@ export function RentMinerScreen(): React.ReactElement {
       if (status === 'active') {
         setStep('active');
       } else {
+        // Payment went through — the daemon will finish activation. NOT back to the
+        // form (a second tap would pay twice): route the user to the dashboard.
         setStep('failed');
         setErr(t('miners.activationSlow'));
       }
     } catch {
-      setStep('failed');
+      setStep('form'); // nothing paid (or rental visible in My rentals) — retryable
       setErr(t('miners.rentErr'));
     }
   };
@@ -166,17 +168,26 @@ export function RentMinerScreen(): React.ReactElement {
         <Text style={styles.totalValue}>{totalSats.toLocaleString('fr-FR')} sats</Text>
       </View>
 
-      <PrimaryButton
-        label={
-          step === 'paying'
-            ? t('miners.payingCta')
-            : step === 'activating'
-              ? t('miners.activatingCta')
-              : t('miners.payCta', { sats: totalSats.toLocaleString('fr-FR') })
-        }
-        onPress={onRent}
-        loading={step === 'paying' || step === 'activating'}
-      />
+      {step === 'failed' ? (
+        // Payment sent, activation still settling server-side — never re-show the
+        // pay CTA here (double-pay risk); the dashboard tracks the rental.
+        <PrimaryButton
+          label={t('miners.goDashboard')}
+          onPress={() => router.replace('/(sections)/miners/dashboard')}
+        />
+      ) : (
+        <PrimaryButton
+          label={
+            step === 'paying'
+              ? t('miners.payingCta')
+              : step === 'activating'
+                ? t('miners.activatingCta')
+                : t('miners.payCta', { sats: totalSats.toLocaleString('fr-FR') })
+          }
+          onPress={onRent}
+          loading={step === 'paying' || step === 'activating'}
+        />
+      )}
       {err ? <Text style={styles.err}>{err}</Text> : null}
     </ScreenScaffold>
   );

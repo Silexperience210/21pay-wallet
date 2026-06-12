@@ -55,6 +55,16 @@ jobs:
           sed -i "s/versionCode 1$/versionCode ${{ github.run_number }}/" android/app/build.gradle
           sed -i "s/versionName \"0.0.1\"/versionName \"$VER\"/" android/app/build.gradle
 
+      # The expo release buildType signs with signingConfigs.debug, whose keystore
+      # is gitignored — generate a THROWAWAY one (the APK is re-signed with the real
+      # release keystore right after; this only satisfies validateSigningRelease).
+      - name: Generate throwaway debug keystore
+        run: |
+          keytool -genkeypair -keystore android/app/debug.keystore \
+            -storepass android -alias androiddebugkey -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US" \
+            -keyalg RSA -keysize 2048 -validity 10000
+
       - name: Build release APK (Gradle)
         env:
           GRADLE_OPTS: -Xmx4g -Dorg.gradle.daemon=false

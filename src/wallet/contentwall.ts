@@ -174,12 +174,23 @@ export async function pollUnlock(
   return last;
 }
 
-/** POST /me/purchases — re-derive items + fresh signed URLs from stored hashes. */
-export async function fetchPurchases(
-  hashes: string[],
-): Promise<{ item_id?: string; title?: string; url?: string; payment_hash?: string }[]> {
+export interface PurchaseRecord {
+  item_id: string;
+  title?: string;
+  content_type?: string;
+  payment_hash: string;
+  /** Signed access token — combined with the payment_hash into the content URL. */
+  token?: string;
+  archived?: boolean;
+  expires_at?: string | null;
+}
+
+/** POST /me/purchases — re-derive items + access tokens from stored hashes.
+ *  NOTE: the endpoint returns a TOKEN, not a ready URL (crud.get_purchases_by_hashes);
+ *  the client builds the signed content URL itself, like the web UI does. */
+export async function fetchPurchases(hashes: string[]): Promise<PurchaseRecord[]> {
   if (hashes.length === 0) return [];
-  const res = await httpRequest<{ item_id?: string; title?: string; url?: string; payment_hash?: string }[]>({
+  const res = await httpRequest<PurchaseRecord[]>({
     baseUrl: LNBITS_URL(),
     path: `${API}/me/purchases`,
     method: 'POST',
@@ -187,6 +198,13 @@ export async function fetchPurchases(
     idempotent: true,
   });
   return Array.isArray(res.data) ? res.data : [];
+}
+
+/** The signed content URL for a purchase (mirrors the server's own construction in
+ *  api_check_payment: /contentwall/content/{id}?payment_hash=…&t=…). */
+export function purchaseContentUrl(p: PurchaseRecord): string {
+  const qs = `payment_hash=${encodeURIComponent(p.payment_hash)}${p.token ? `&t=${encodeURIComponent(p.token)}` : ''}`;
+  return `${LNBITS_URL()}/contentwall/content/${encodeURIComponent(p.item_id)}?${qs}`;
 }
 
 // ── Creator (LNbits-keyed — the custodial wallet's own keys) ──────────────────

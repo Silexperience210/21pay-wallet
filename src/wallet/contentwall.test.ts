@@ -12,6 +12,7 @@ import {
   checkUnlock,
   pollUnlock,
   fetchPurchases,
+  purchaseContentUrl,
   listMyItems,
   createArticleItem,
   shareUrl,
@@ -95,10 +96,22 @@ describe('buyer flow (public endpoints)', () => {
   it('fetchPurchases posts stored hashes (and skips the call when empty)', async () => {
     await expect(fetchPurchases([])).resolves.toEqual([]);
     expect(mockHttp).not.toHaveBeenCalled();
-    mockHttp.mockResolvedValueOnce({ status: 200, data: [{ item_id: ITEM, url: 'u' }] });
+    mockHttp.mockResolvedValueOnce({
+      status: 200,
+      data: [{ item_id: ITEM, title: 'T', payment_hash: HASH, token: 'tok' }],
+    });
     const list = await fetchPurchases([HASH]);
     expect(lastCall()).toMatchObject({ path: '/contentwall/api/v1/me/purchases', body: { hashes: [HASH] } });
     expect(list).toHaveLength(1);
+  });
+
+  it('purchaseContentUrl mirrors the server construction (token in `t`, no-token tolerated)', () => {
+    expect(purchaseContentUrl({ item_id: ITEM, payment_hash: HASH, token: 'tok' })).toBe(
+      `https://21pay.org/contentwall/content/${ITEM}?payment_hash=${HASH}&t=tok`,
+    );
+    expect(purchaseContentUrl({ item_id: ITEM, payment_hash: HASH })).toBe(
+      `https://21pay.org/contentwall/content/${ITEM}?payment_hash=${HASH}`,
+    );
   });
 });
 

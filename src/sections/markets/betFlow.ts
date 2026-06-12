@@ -12,7 +12,7 @@ import { buildOrderTemplate } from './lib/build';
 import { publishToRelays } from './lib/relay';
 import { randomBettorSecret, compressedPubkey, outcomeLockKey, outcomeUnlockSecret } from './lib/dlc';
 import * as cashu from './lib/wallet';
-import { addPosition, loadBettorSecret, updatePosition, type BetPosition } from './positions';
+import { addPosition, loadBettorSecret, removePosition, updatePosition, type BetPosition } from './positions';
 import { HUNCH_RELAYS, BET_MIN_SAT, BET_MAX_SAT, mintUrlForMarket } from './marketsConfig';
 
 export interface PlaceBetOpts {
@@ -46,10 +46,10 @@ export async function placeBet(
   const wallet = await cashu.connect(mintUrlForMarket(market.mint));
   const { quote, invoice } = await cashu.depositQuote(wallet, opts.amountSat);
   if (!invoice) throw new Error('mint returned no invoice');
-  await caps.wallet.payInvoice(invoice);
-  await cashu.waitPaid(wallet, quote);
-  const proofs = await cashu.mintLocked(wallet, opts.amountSat, quote, lockKey, B, market.refundTimeout);
 
+  // FUNDS-SAFETY: persist the position (and the stake key b) BEFORE paying. If the
+  // app dies between the payment and the mint, the quote is PAID at the mint and
+  // only b + the quote can ever recover it — they must already be on disk.
   const position: BetPosition = {
     id: `${market.d}-${Date.now()}`,
     marketId: market.id,
@@ -60,11 +60,23 @@ export async function placeBet(
     oracle: market.oracle,
     nonce: announce.nonce,
     locktime: market.refundTimeout,
-    proofs,
+    proofs: [], // filled after the mint below
     createdAt: Math.floor(Date.now() / 1000),
     status: 'open',
   };
   await addPosition(caps, position, b);
+
+  try {
+    await caps.wallet.payInvoice(invoice);
+  } catch (e) {
+    // The payment itself failed — no sats moved, the placeholder can go.
+    await removePosition(caps, position.id).catch(() => {});
+    throw e;
+  }
+  await cashu.waitPaid(wallet, quote);
+  const proofs = await cashu.mintLocked(wallet, opts.amountSat, quote, lockKey, B, market.refundTimeout);
+  await updatePosition(caps, position.id, { proofs });
+  position.proofs = proofs;
 
   // Publish the Core-signed order (MARKET-03). Best-effort: the stake is already
   // safe in the position; an unreachable relay must not throw the bet away.
@@ -100,6 +112,10 @@ export async function settlePosition(
   position: BetPosition,
   attestation: OracleAttestation,
 ): Promise<SettleResult> {
+  if (position.proofs.length === 0 && !position.unlockedProofs) {
+    // The stake never completed (payment without mint) — nothing redeemable here.
+    throw new Error('stake incomplete — no tokens were minted for this position');
+  }
   const b = await loadBettorSecret(caps, position.id);
   if (!b) throw new Error('stake key missing for this position');
 
@@ -138,14 +154,24 @@ export async function refundPosition(caps: SectionCapabilities, position: BetPos
 }
 
 /** Unlock the proofs with `privkey`, then melt them onto a fresh in-app wallet
- *  invoice (a small fee reserve is left at the mint side). */
+ *  invoice (a small fee reserve is left at the mint side).
+ *
+ *  RETRY-SAFE: the redeem SWAP spends the locked proofs at the mint — if the melt
+ *  then failed without persisting, the unlocked proofs would be lost. So the
+ *  unlocked proofs are persisted into the position BEFORE melting; a retry skips
+ *  the redeem (unlockedProofs flag) and goes straight to the melt. */
 async function redeemAndMelt(
   caps: SectionCapabilities,
   position: BetPosition,
   privkey: string,
 ): Promise<number> {
   const wallet = await cashu.connect(position.mintUrl);
-  const unlocked = await cashu.redeem(wallet, position.proofs, privkey);
+  let unlocked = position.proofs;
+  if (!position.unlockedProofs) {
+    unlocked = await cashu.redeem(wallet, position.proofs, privkey);
+    // Persist FIRST — from here the locked proofs are spent and these are the money.
+    await updatePosition(caps, position.id, { proofs: unlocked, unlockedProofs: true });
+  }
   const total = cashu.proofsTotal(unlocked);
   // Melt fee reserve comes out of the proofs: invoice slightly under the total.
   const payable = Math.max(1, total - Math.max(2, Math.ceil(total * 0.01)));

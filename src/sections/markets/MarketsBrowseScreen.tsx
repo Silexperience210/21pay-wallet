@@ -26,13 +26,18 @@ export function MarketsBrowseScreen(): React.ReactElement {
     try {
       setErr(null);
       const events = await queryRelays(HUNCH_RELAYS, { kinds: [KIND_MARKET], limit: 100 });
-      const seen = new Map<string, Market>();
+      // 30888 is replaceable: relays may hold different versions — keep the newest.
+      const seen = new Map<string, { market: Market; at: number }>();
       for (const ev of events) {
         if (!verifyEvent(ev)) continue; // forged events dropped
         const m = parseMarketEvent(ev);
-        if (m) seen.set(m.id, m);
+        if (!m) continue;
+        const prev = seen.get(m.id);
+        if (!prev || ev.created_at > prev.at) seen.set(m.id, { market: m, at: ev.created_at });
       }
-      setMarkets([...seen.values()].sort((a, b) => b.expiry - a.expiry));
+      setMarkets(
+        [...seen.values()].map((e) => e.market).sort((a, b) => b.expiry - a.expiry),
+      );
     } catch {
       setErr(t('markets.backendErr'));
     }
