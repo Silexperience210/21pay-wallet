@@ -172,6 +172,26 @@ export function CreateMarketScreen(): React.ReactElement {
       </View>
 
       <Text style={styles.eyebrow}>{t('markets.create.oracle')}</Text>
+      <View style={styles.oracleList}>
+        <Pressable
+          onPress={async () => {
+            try {
+              const pk = await caps.signer.getNostrPubkey();
+              setOracle(pk);
+              // Prompt-free cache — unlocks the oracle panel on market pages.
+              await caps.store.set('markets.myPubkey', pk).catch(() => {});
+            } catch {
+              setErr(t('markets.createErr'));
+            }
+          }}
+          accessibilityRole="button"
+          style={styles.oracleRow}
+        >
+          <Feather name="user" size={14} color={theme.color.accent} />
+          <Text style={styles.oracleKey}>{t('markets.create.meAsOracle')}</Text>
+          <Text style={styles.oracleMeta}>{t('markets.create.meAsOracleHint')}</Text>
+        </Pressable>
+      </View>
       {suggestions.length > 0 ? (
         <View style={styles.oracleList}>
           {suggestions.map((s) => (

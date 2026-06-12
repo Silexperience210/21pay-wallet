@@ -236,6 +236,40 @@ export async function deleteNwcSecret(id: string): Promise<void> {
   await removeNamedSecret(nwcDekService(id), nwcCtKey(id), nwcPresenceKey(id));
 }
 
+// --- Oracle nonce store (Markets oracle mode). The per-market nonce k is AS
+// SENSITIVE AS THE SEED: anyone with k + the published attestation recovers the
+// oracle private key (s = k + e·d). Same biometric DEK + AES-GCM path. The
+// attested-outcome marker is the EQUIVOCATION GUARD: signing two different
+// outcomes under one nonce leaks the key, so the second attest is refused hard.
+const oracleDekService = (h: string): string => `org.pay21.wallet.dek.oracle.${h}`;
+const oracleCtKey = (h: string): string => `oracle.nonce.${h}`;
+const oraclePresenceKey = (h: string): string => `oracle.present.${h}`;
+const oracleOutcomeKey = (h: string): string => `oracle.outcome.${h}`;
+
+/** Store the per-market oracle nonce secret k (hex). */
+export async function storeOracleNonce(marketHash: string, kHex: string): Promise<void> {
+  await putNamedSecret(oracleDekService(marketHash), oracleCtKey(marketHash), oraclePresenceKey(marketHash), kHex);
+}
+/** Load the per-market oracle nonce secret k (biometric-gated), or null. */
+export async function loadOracleNonce(marketHash: string): Promise<string | null> {
+  return getNamedSecret(oracleDekService(marketHash), oracleCtKey(marketHash));
+}
+/** Prompt-free presence check for a market's committed nonce. */
+export async function hasOracleNonce(marketHash: string): Promise<boolean> {
+  const marker = await SecureStore.getItemAsync(oraclePresenceKey(marketHash), {
+    keychainService: SECURE_STORE_SERVICE,
+  });
+  return marker === '1';
+}
+/** The outcome already attested for this market, or null (equivocation guard). */
+export async function getAttestedOutcome(marketHash: string): Promise<string | null> {
+  return SecureStore.getItemAsync(oracleOutcomeKey(marketHash), { keychainService: SECURE_STORE_SERVICE });
+}
+/** Record the attested outcome — write-once semantics enforced by the caller. */
+export async function setAttestedOutcome(marketHash: string, outcome: string): Promise<void> {
+  await SecureStore.setItemAsync(oracleOutcomeKey(marketHash), outcome, { keychainService: SECURE_STORE_SERVICE });
+}
+
 /** Store the DEDICATED Spark seed (D-12 — separate from the identity master seed). */
 export async function storeSparkSeed(mnemonic: string): Promise<void> {
   await putNamedSecret(SPARK_DEK_SERVICE, SPARK_CT_KEY, SPARK_PRESENCE_KEY, mnemonic);

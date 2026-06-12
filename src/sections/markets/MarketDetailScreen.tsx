@@ -6,8 +6,10 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { ScreenScaffold, PrimaryButton, theme } from '@/ui';
+import { ScreenScaffold, PrimaryButton, SecondaryButton, theme } from '@/ui';
 import { t } from '@/i18n';
+import { useSectionCapabilities } from '../SectionHost';
+import { publishToRelays } from './lib/relay';
 import {
   KIND_MARKET,
   KIND_ORDER,
@@ -32,6 +34,7 @@ function short(hex: string, n = 12): string {
 }
 
 export function MarketDetailScreen(): React.ReactElement {
+  const caps = useSectionCapabilities();
   const params = useLocalSearchParams<{ creator: string; d: string }>();
   const creator = String(params.creator ?? '');
   const d = String(params.d ?? '');
@@ -45,6 +48,15 @@ export function MarketDetailScreen(): React.ReactElement {
   const [reputation, setReputation] = useState<ReputationSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  // Oracle mode — myPubkey from the prompt-free section-store cache (populated the
+  // first time any flow unlocks the identity; never prompts on a simple page view).
+  const [myPubkey, setMyPubkey] = useState<string | null>(null);
+  const [pendingOutcome, setPendingOutcome] = useState<'YES' | 'NO' | 'INVALID' | null>(null);
+  const [oracleBusy, setOracleBusy] = useState(false);
+
+  useEffect(() => {
+    caps.store.get('markets.myPubkey').then(setMyPubkey).catch(() => {});
+  }, [caps]);
 
   const load = useCallback(async () => {
     try {
@@ -172,6 +184,90 @@ export function MarketDetailScreen(): React.ReactElement {
           ) : !attestation ? (
             <Text style={styles.hint}>{open ? t('markets.noBetNoNonce') : t('markets.expired')}</Text>
           ) : null}
+
+          {/* ── ORACLE MODE — visible only to THIS market's oracle ── */}
+          {myPubkey && market.oracle === myPubkey && !attestation ? (
+            <View style={styles.oraclePanel}>
+              <View style={styles.oraclePanelHead}>
+                <Feather name="radio" size={16} color="#7850ff" />
+                <Text style={styles.oraclePanelTitle}>{t('markets.oracle.panel')}</Text>
+              </View>
+              {!announce ? (
+                <>
+                  <Text style={styles.oraclePanelBody}>{t('markets.oracle.announceBody')}</Text>
+                  <PrimaryButton
+                    label={t('markets.oracle.announceCta')}
+                    loading={oracleBusy}
+                    onPress={async () => {
+                      setOracleBusy(true);
+                      setErr(null);
+                      try {
+                        const { nonce } = await caps.signer.oracleAnnounce(id);
+                        const signed = await caps.signer.signHunchEvent({
+                          kind: 88,
+                          tags: [['market', id], ['nonce', nonce]],
+                          content: 'committed via 21pay wallet',
+                        });
+                        if (!(await publishToRelays(HUNCH_RELAYS, signed))) throw new Error('relay');
+                        await load();
+                      } catch {
+                        setErr(t('markets.createPublishErr'));
+                      } finally {
+                        setOracleBusy(false);
+                      }
+                    }}
+                  />
+                </>
+              ) : (
+                <>
+                  <Text style={styles.oraclePanelBody}>{t('markets.oracle.attestBody')}</Text>
+                  <View style={styles.outcomeRow}>
+                    {(['YES', 'NO', 'INVALID'] as const).map((o) => (
+                      <SecondaryButton
+                        key={o}
+                        label={pendingOutcome === o ? `● ${o}` : o}
+                        onPress={() => setPendingOutcome(o)}
+                      />
+                    ))}
+                  </View>
+                  {pendingOutcome ? (
+                    <>
+                      <Text style={styles.oracleWarn}>
+                        {t('markets.oracle.confirmWarn', { outcome: pendingOutcome })}
+                      </Text>
+                      <PrimaryButton
+                        label={t('markets.oracle.confirmCta', { outcome: pendingOutcome })}
+                        loading={oracleBusy}
+                        onPress={async () => {
+                          setOracleBusy(true);
+                          setErr(null);
+                          try {
+                            const { signature } = await caps.signer.oracleAttest(id, pendingOutcome);
+                            const signed = await caps.signer.signHunchEvent({
+                              kind: 89,
+                              tags: [['market', id], ['outcome', pendingOutcome], ['sig', signature]],
+                              content: '',
+                            });
+                            if (!(await publishToRelays(HUNCH_RELAYS, signed))) throw new Error('relay');
+                            setPendingOutcome(null);
+                            await load();
+                          } catch (e) {
+                            setErr(
+                              e instanceof Error && /already attested/.test(e.message)
+                                ? t('markets.oracle.equivocation')
+                                : t('markets.createPublishErr'),
+                            );
+                          } finally {
+                            setOracleBusy(false);
+                          }
+                        }}
+                      />
+                    </>
+                  ) : null}
+                </>
+              )}
+            </View>
+          ) : null}
         </>
       ) : null}
     </ScreenScaffold>
@@ -196,4 +292,23 @@ const styles = StyleSheet.create({
   settleHead: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
   settleTitle: { fontFamily: theme.font.label.fontFamily, fontSize: 14, color: theme.color.text },
   settleSigLabel: { fontFamily: theme.font.label.fontFamily, fontSize: 11, color: theme.color.textMuted },
+  oraclePanel: {
+    borderWidth: 1,
+    borderColor: 'rgba(120,80,255,0.45)',
+    backgroundColor: 'rgba(120,80,255,0.06)',
+    borderRadius: theme.radius.lg,
+    padding: theme.space.lg,
+    gap: theme.space.md,
+    marginTop: theme.space.xl,
+  },
+  oraclePanelHead: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
+  oraclePanelTitle: { fontFamily: theme.font.label.fontFamily, fontSize: 14, color: theme.color.text },
+  oraclePanelBody: { fontFamily: theme.font.body.fontFamily, fontSize: 13, lineHeight: 18, color: theme.color.textMuted },
+  outcomeRow: { gap: theme.space.sm },
+  oracleWarn: {
+    fontFamily: theme.font.label.fontFamily,
+    fontSize: 12,
+    lineHeight: 17,
+    color: theme.color.destructive,
+  },
 });

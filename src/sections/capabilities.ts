@@ -33,9 +33,16 @@ export interface SectionCapabilities {
     /** The PUBLIC identity pubkey (hex) — needed to request auth challenges. */
     getNostrPubkey(): Promise<string>;
     /** Sign a Hunch protocol event with the master identity (MARKET-03). The host
-     *  enforces a kind ALLOWLIST (orders/disputes/reputation) — sections can never
-     *  sign arbitrary kinds (no kind-0 metadata, no DMs — blast-radius). */
+     *  enforces a kind ALLOWLIST (markets/orders/disputes/reputation/oracle) —
+     *  sections can never sign arbitrary kinds (no kind-0, no DMs — blast-radius). */
     signHunchEvent(template: { kind: number; tags: string[][]; content: string }): Promise<SectionNip98Event>;
+    /** ORACLE MODE — commit (or reuse) the per-market nonce; returns the public R_x. */
+    oracleAnnounce(marketId: string): Promise<{ nonce: string }>;
+    /** ORACLE MODE — sign the outcome under the committed nonce. Refuses a second
+     *  DIFFERENT outcome (equivocation = key leak); same outcome is idempotent. */
+    oracleAttest(marketId: string, outcome: 'YES' | 'NO' | 'INVALID'): Promise<{ signature: string }>;
+    /** ORACLE MODE — prompt-free state: has a nonce been committed / what was attested. */
+    oracleState(marketId: string): Promise<{ announced: boolean; attested: string | null }>;
   };
   /** Small per-section persistence, host-namespaced. `set/get` = non-secret metadata
    *  (SQLite prefs); `setSecret/getSecret` = secret material (expo-secure-store) —

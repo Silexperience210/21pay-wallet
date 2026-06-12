@@ -27,3 +27,6 @@ export { signLnurlAuth, deriveLnurlAuthKey } from './lnurlAuth';
 // NIP-98 HTTP-auth over the master identity — returns the SIGNED (public) event only.
 export { signNip98Auth } from './nostrAuth';
 export type { Nip98Event } from './nostrAuth';
+// Oracle mode: committed-nonce announce + fixed-nonce attestation (equivocation-guarded).
+export { oracleAnnounce, oracleAttest, marketHash } from './oracleAttest';
+export { hasOracleNonce, getAttestedOutcome } from './vault';

@@ -7,7 +7,17 @@ import React, { createContext, useContext, useMemo } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import type { SectionCapabilities } from './capabilities';
 import { useWallet } from '../wallet';
-import { loadMnemonic, signNip98Auth, deriveNostrIdentity, signEvent } from '../core/keys';
+import {
+  loadMnemonic,
+  signNip98Auth,
+  deriveNostrIdentity,
+  signEvent,
+  oracleAnnounce,
+  oracleAttest,
+  marketHash,
+  hasOracleNonce,
+  getAttestedOutcome,
+} from '../core/keys';
 import { loadNostrPrivkeyBytes } from '../core/keys/derivation';
 import { signLnurlAuth } from '../core/keys/lnurlAuth';
 import { getPref, setPref } from '../core/state';
@@ -15,7 +25,7 @@ import { getPref, setPref } from '../core/state';
 // The ONLY kinds a section may have the identity sign (Hunch protocol write path:
 // markets / orders / disputes / reputation). Never extend casually — this list is
 // the seam's blast-radius guard (no kind-0 metadata, no kind-4 DMs, no notes).
-const HUNCH_SIGNABLE_KINDS = new Set([30888, 38888, 30890, 30891]);
+const HUNCH_SIGNABLE_KINDS = new Set([30888, 38888, 30890, 30891, 88, 89]);
 
 // Host-side namespace for the section store capability.
 const STORE_NS = 'section.';
@@ -86,6 +96,17 @@ export function SectionHost({ children }: { children: React.ReactNode }): React.
             content: ev.content,
             sig: ev.sig,
           };
+        },
+        async oracleAnnounce(marketId: string) {
+          return oracleAnnounce(marketId); // nonce minted+stored inside Core
+        },
+        async oracleAttest(marketId: string, outcome: 'YES' | 'NO' | 'INVALID') {
+          const mnemonic = await loadMnemonic();
+          return oracleAttest(mnemonic, marketId, outcome); // equivocation-guarded
+        },
+        async oracleState(marketId: string) {
+          const h = marketHash(marketId);
+          return { announced: await hasOracleNonce(h), attested: await getAttestedOutcome(h) };
         },
       },
       store: {
