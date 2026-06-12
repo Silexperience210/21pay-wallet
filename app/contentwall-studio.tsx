@@ -35,14 +35,22 @@ export default function ContentwallStudio(): React.ReactElement {
     if (!cfg) return;
     try {
       setErr(null);
-      const list = await listMyItems(cfg);
+      const list = await listMyItems(cfg).catch((e: unknown) => {
+        // LNbits per-user extension gate: fresh accounts must ENABLE contentwall,
+        // and this instance prices that activation (pay_to_enable) — explain it
+        // instead of a generic "unreachable".
+        if ((e as { status?: number })?.status === 403) {
+          throw new Error('not-enabled');
+        }
+        throw e;
+      });
       setItems(list);
       // Stats are best-effort decoration — fetch lazily, never block the list.
       for (const it of list.slice(0, 10)) {
         getItemStats(cfg, it.id).then((s) => setStats((prev) => ({ ...prev, [it.id]: s }))).catch(() => {});
       }
-    } catch {
-      setErr(t('cw.backendErr'));
+    } catch (e) {
+      setErr(e instanceof Error && e.message === 'not-enabled' ? t('cw.notEnabled') : t('cw.backendErr'));
     }
   }, [cfg]);
 

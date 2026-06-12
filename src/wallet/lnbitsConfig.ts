@@ -6,6 +6,9 @@ export interface CustodialLnbitsConfig {
   adminKey: string;
   invoiceKey: string;
   readKey: string;
+  /** LNbits user id (NOT a key) — needed to enable extensions for the account
+   *  (login-by-usr). Optional: configs persisted before this field exist without it. */
+  userId?: string;
 }
 
 export function lnbitsBaseUrl(): string {
