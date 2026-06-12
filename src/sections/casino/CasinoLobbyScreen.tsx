@@ -38,20 +38,31 @@ export function CasinoLobbyScreen(): React.ReactElement {
   const [liveBalance, setLiveBalance] = useState<number | null>(null);
   // Remount key — layer 2: a dead renderer process gets a fresh WebView.
   const [webViewKey, setWebViewKey] = useState(0);
+  // Retry trigger: incrementing this re-runs the auth effect.
+  const [authAttempt, setAuthAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setAuthed(null);
+    setErr(null);
     (async () => {
-      // layer 3: async login failures surface as state, never an unhandled throw
       const result = await loginWithLnurlAuth(caps);
       if (cancelled) return;
       setAuthed(result.ok);
-      if (!result.ok) setErr(t('casino.backendErr'));
+      if (!result.ok) {
+        const key =
+          result.reason === 'expired'
+            ? 'casino.authExpired'
+            : result.reason === 'invalid-lnurl'
+              ? 'casino.authInvalid'
+              : 'casino.backendErr';
+        setErr(t(key));
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [caps]);
+  }, [caps, authAttempt]);
 
   const handleMessage = useCallback((event: WebViewMessageEvent) => {
     const msg = parseBridgeMessage(event.nativeEvent.data);
@@ -108,7 +119,12 @@ export function CasinoLobbyScreen(): React.ReactElement {
         </View>
       ) : null}
 
-      {err ? <Text style={styles.err}>{err}</Text> : null}
+      {err ? (
+        <View style={styles.errBox}>
+          <Text style={styles.err}>{err}</Text>
+          <SecondaryButton label={t('casino.retryAuth')} onPress={() => setAuthAttempt((n) => n + 1)} />
+        </View>
+      ) : null}
 
       {authed === null ? (
         <Text style={styles.lead}>{t('casino.connecting')}</Text>
@@ -165,7 +181,8 @@ const styles = StyleSheet.create({
   balanceChipLabel: { fontFamily: theme.font.label.fontFamily, fontSize: 13, color: theme.color.textMuted },
   balanceChipValue: { fontFamily: theme.font.mono.fontFamily, fontSize: 14, color: theme.color.text },
   lead: { fontFamily: theme.font.body.fontFamily, fontSize: 15, color: theme.color.textMuted, textAlign: 'center', marginTop: theme.space.xl },
-  err: { fontFamily: theme.font.body.fontFamily, fontSize: 13, color: theme.color.destructive, marginBottom: theme.space.sm },
+  errBox: { alignItems: 'center', gap: theme.space.md, marginBottom: theme.space.md },
+  err: { fontFamily: theme.font.body.fontFamily, fontSize: 13, color: theme.color.destructive, textAlign: 'center' },
   webviewWrap: { flex: 1, borderRadius: theme.radius.md, overflow: 'hidden', minHeight: 420 },
   webview: { flex: 1, backgroundColor: theme.color.bg },
 });
