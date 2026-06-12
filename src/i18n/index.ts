@@ -377,6 +377,12 @@ const en: Dict = {
   'cw.myItems': 'My content',
   'cw.noItems': 'Nothing published yet.',
   'cw.statsLine': '{sales} sales · {revenue} sats',
+  'cw.deleteTitle': 'Delete content',
+  'cw.deleteBody': '"{title}" will be removed from your public list. Past buyers keep access.',
+  'cw.deleteCancel': 'Cancel',
+  'cw.deleteArchive': 'Unpublish',
+  'cw.deleteForever': 'Delete permanently',
+  'cw.deleteErr': 'Could not delete — try again.',
   'cw.notEnabled': 'ContentWall is not enabled for this account yet. Enable it on 21pay.org (this instance charges an activation fee).',
 };
 
@@ -743,6 +749,12 @@ const fr: Dict = {
   'cw.myItems': 'Mes contenus',
   'cw.noItems': 'Rien de publié pour l’instant.',
   'cw.statsLine': '{sales} ventes · {revenue} sats',
+  'cw.deleteTitle': 'Supprimer le contenu',
+  'cw.deleteBody': '"{title}" sera retiré de ta liste publique. Les acheteurs précédents gardent l’accès.',
+  'cw.deleteCancel': 'Annuler',
+  'cw.deleteArchive': 'Dépublier',
+  'cw.deleteForever': 'Supprimer définitivement',
+  'cw.deleteErr': 'Suppression impossible — réessaie.',
   'cw.notEnabled': 'ContentWall n’est pas encore activée pour ce compte. Active-la sur 21pay.org (cette instance facture l’activation).',
 };
 

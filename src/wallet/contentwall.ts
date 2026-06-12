@@ -288,6 +288,31 @@ export interface PickedFile {
   mimeType?: string;
 }
 
+/** POST /items/{id}/archive (admin key) — soft-delete / unpublish the item.
+ *  Past buyers keep access; new purchases are blocked and the item disappears
+ *  from creator lists unless 'Show archived' is enabled. */
+export async function archiveItem(cfg: CustodialLnbitsConfig, itemId: string): Promise<void> {
+  await httpRequest<{ archived: boolean }>({
+    baseUrl: LNBITS_URL(),
+    path: `${API}/items/${encodeURIComponent(itemId)}/archive`,
+    method: 'POST',
+    headers: keyHeaders(cfg.adminKey),
+    idempotent: false,
+  });
+}
+
+/** DELETE /items/{id} (admin key) — hard delete the item and all its files.
+ *  Use with care: this permanently removes content and payment history. */
+export async function deleteItem(cfg: CustodialLnbitsConfig, itemId: string): Promise<void> {
+  await httpRequest<{ deleted: boolean }>({
+    baseUrl: LNBITS_URL(),
+    path: `${API}/items/${encodeURIComponent(itemId)}`,
+    method: 'DELETE',
+    headers: keyHeaders(cfg.adminKey),
+    idempotent: false,
+  });
+}
+
 /** Multipart upload of a picked file to the right extension endpoint by type:
  *  image → /upload · audio/video → /upload-media · bundle → /files (repeatable).
  *  Field name is `upload_file` (FastAPI UploadFile); the server validates the real

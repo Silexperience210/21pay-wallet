@@ -4,7 +4,7 @@
 // file bundles — files are picked natively and pushed multipart to the extension
 // (which validates real content by magic bytes server-side).
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
@@ -17,6 +17,8 @@ import {
   createMediaItem,
   uploadItemFile,
   getItemStats,
+  archiveItem,
+  deleteItem,
   shareUrl,
   type ContentwallItem,
   type ItemStats,
@@ -49,6 +51,7 @@ export default function ContentwallStudio(): React.ReactElement {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -174,6 +177,49 @@ export default function ContentwallStudio(): React.ReactElement {
     setTimeout(() => setCopiedId(null), 1500);
   };
 
+  const onDelete = (id: string, title: string) => {
+    Alert.alert(
+      t('cw.deleteTitle'),
+      t('cw.deleteBody', { title }),
+      [
+        { text: t('cw.deleteCancel'), style: 'cancel' },
+        {
+          text: t('cw.deleteArchive'),
+          style: 'default',
+          onPress: async () => {
+            setDeletingId(id);
+            setErr(null);
+            try {
+              await archiveItem(cfg, id);
+              await load();
+            } catch (e) {
+              setErr(e instanceof Error && e.message ? e.message : t('cw.deleteErr'));
+            } finally {
+              setDeletingId(null);
+            }
+          },
+        },
+        {
+          text: t('cw.deleteForever'),
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingId(id);
+            setErr(null);
+            try {
+              await deleteItem(cfg, id);
+              await load();
+            } catch (e) {
+              setErr(e instanceof Error && e.message ? e.message : t('cw.deleteErr'));
+            } finally {
+              setDeletingId(null);
+            }
+          },
+        },
+      ],
+      { cancelable: true },
+    );
+  };
+
   return (
     <ScreenScaffold title={t('cw.studio')} scroll>
       {err ? <Text style={styles.err}>{err}</Text> : null}
@@ -272,13 +318,22 @@ export default function ContentwallStudio(): React.ReactElement {
                   {s ? ` · ${t('cw.statsLine', { sales: String(s.sales ?? 0), revenue: String(s.revenue ?? 0) })}` : ''}
                 </Text>
               </View>
-              <Pressable onPress={() => onCopy(it.id)} hitSlop={8} accessibilityRole="button">
-                <Feather
-                  name={copiedId === it.id ? 'check' : 'share-2'}
-                  size={17}
-                  color={copiedId === it.id ? theme.color.success : theme.color.accent}
-                />
-              </Pressable>
+              <View style={styles.rowActions}>
+                <Pressable onPress={() => onCopy(it.id)} hitSlop={8} accessibilityRole="button" disabled={deletingId === it.id}>
+                  <Feather
+                    name={copiedId === it.id ? 'check' : 'share-2'}
+                    size={17}
+                    color={copiedId === it.id ? theme.color.success : theme.color.accent}
+                  />
+                </Pressable>
+                <Pressable onPress={() => onDelete(it.id, it.title)} hitSlop={8} accessibilityRole="button" disabled={deletingId === it.id}>
+                  <Feather
+                    name={deletingId === it.id ? 'loader' : 'trash-2'}
+                    size={17}
+                    color={theme.color.destructive}
+                  />
+                </Pressable>
+              </View>
             </View>
           );
         })
@@ -333,4 +388,5 @@ const styles = StyleSheet.create({
   rowMain: { flex: 1, gap: 2 },
   rowTitle: { fontFamily: theme.font.label.fontFamily, fontSize: 14, color: theme.color.text },
   rowSub: { fontFamily: theme.font.body.fontFamily, fontSize: 12, color: theme.color.textMuted },
+  rowActions: { flexDirection: 'row', alignItems: 'center', gap: theme.space.md },
 });
