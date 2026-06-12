@@ -14,6 +14,10 @@ export type CasinoLoginResult =
  *  boundary — async errors are NOT caught by React boundaries, CASINO-04 layer 3). */
 export async function loginWithLnurlAuth(caps: SectionCapabilities): Promise<CasinoLoginResult> {
   try {
+    // Start fresh: a stale or corrupted session cookie would make the casino
+    // reject the new challenge/flow (D-05). Clearing here is safe because the
+    // WebView source is rebuilt from the cookie after a successful poll.
+    casinoApi.clearSession();
     // (1) the casino mints the k1 challenge inside a bech32 LNURL
     const { lnurl } = await casinoApi.generateAuthUrl();
     // (2) decode → extract k1 + the domain the linking key binds to (LUD-05)

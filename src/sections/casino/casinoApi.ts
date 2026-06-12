@@ -54,13 +54,17 @@ export async function generateAuthUrl(): Promise<{ lnurl: string }> {
 /** GET /api/auth/callback?tag=login&k1=&sig=&key= — submits the LUD-04 signature.
  *  The casino answers HTTP 200 with `{status:'ERROR', reason}` on a bad signature
  *  (LUD-04 shape) — fail fast here instead of polling a challenge that will never
- *  flip to authenticated. */
+ *  flip to authenticated.
+ *
+ *  MUST be idempotent:false: the server consumes the one-shot k1 on the first
+ *  successful reach. A blind retry would resubmit the same sig on a spent k1 and
+ *  make the caller believe the signature was rejected. */
 export async function authCallback(k1: string, sig: string, key: string): Promise<void> {
   const res = await httpRequest<{ status?: string; reason?: string }>({
     baseUrl: CASINO_ORIGIN,
     path: `/api/auth/callback?tag=login&k1=${k1}&sig=${sig}&key=${key}`,
     headers: cookieHeaders(),
-    idempotent: true,
+    idempotent: false,
   });
   if (res.data?.status === 'ERROR') {
     throw new Error(`lnurl-auth callback rejected: ${res.data.reason ?? 'unknown'}`);
