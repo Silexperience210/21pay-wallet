@@ -6,11 +6,35 @@
 // SEC-03: the DEK entry's biometric gate is OS/Keystore-enforced (accessControl),
 //   not a JS boolean (Pitfall 2).
 // SEC-04: the raw key stays inside Core; never logged, never returned to sections.
+import { AppState } from 'react-native';
 import * as Keychain from 'react-native-keychain';
 import * as SecureStore from 'expo-secure-store';
 import { gcm } from '@noble/ciphers/aes.js';
 import { loadNostrPrivkeyBytes } from './derivation';
 import type { SecurityLevel, VaultStatus } from './types';
+
+// ── Unlock session (UX) ───────────────────────────────────────────────────────
+// One biometric prompt opens a short SESSION instead of prompting per Core
+// operation — a single user flow often loads the mnemonic twice in a row
+// (e.g. Mineurs login = identity pubkey THEN NIP-98 sign → two prompts before
+// this). The decrypted mnemonic is held in JS memory only (strings cannot be
+// zeroized — the same honest limit as every transient load), for a short TTL,
+// and dropped the moment the app leaves the foreground.
+const UNLOCK_SESSION_MS = 120_000;
+let unlockSession: { value: string; expiresAt: number } | null = null;
+
+function dropUnlockSession(): void {
+  unlockSession = null;
+}
+
+// Background/inactive ⇒ the session dies immediately (screen-off, app switch).
+try {
+  AppState?.addEventListener?.('change', (state) => {
+    if (state !== 'active') dropUnlockSession();
+  });
+} catch {
+  /* non-RN test environments without AppState */
+}
 
 // PERMANENT service-string contract — do not change (RESEARCH Runtime State Inventory).
 const DEK_SERVICE = 'org.pay21.wallet.dek';
@@ -70,6 +94,7 @@ const dekBase = {
 
 /** Encrypt-then-store the mnemonic; returns the achieved hardware tier. */
 export async function storeMnemonic(mnemonic: string): Promise<SecurityLevel> {
+  dropUnlockSession(); // never serve a stale mnemonic after a (re)store
   const dek = generateDek();
   try {
     const ciphertextB64 = encryptMnemonic(mnemonic, dek);
@@ -113,8 +138,14 @@ export async function hasMnemonic(): Promise<boolean> {
   return marker === '1';
 }
 
-/** Biometric-gated load + decrypt. Throws if the vault is empty. */
+/** Biometric-gated load + decrypt. Throws if the vault is empty. A successful
+ *  unlock opens a short session (UNLOCK_SESSION_MS, foreground-only) so chained
+ *  Core operations don't re-prompt. */
 export async function loadMnemonic(): Promise<string> {
+  if (unlockSession && Date.now() < unlockSession.expiresAt) {
+    return unlockSession.value;
+  }
+  dropUnlockSession();
   const dekEntry = await Keychain.getGenericPassword({ service: DEK_SERVICE });
   if (!dekEntry) throw new Error('vault: no DEK present');
   const ciphertextB64 = await SecureStore.getItemAsync(CIPHERTEXT_KEY, {
@@ -123,10 +154,17 @@ export async function loadMnemonic(): Promise<string> {
   if (!ciphertextB64) throw new Error('vault: no ciphertext present');
   const dek = new Uint8Array(Buffer.from(dekEntry.password, 'base64'));
   try {
-    return decryptMnemonic(ciphertextB64, dek);
+    const mnemonic = decryptMnemonic(ciphertextB64, dek);
+    unlockSession = { value: mnemonic, expiresAt: Date.now() + UNLOCK_SESSION_MS };
+    return mnemonic;
   } finally {
     dek.fill(0);
   }
+}
+
+/** Test/explicit-lock hook: forget the current unlock session immediately. */
+export function __dropUnlockSessionForTests(): void {
+  dropUnlockSession();
 }
 
 // --- Named secrets (Phase 4) — same biometric DEK + AES-256-GCM path as the mnemonic,

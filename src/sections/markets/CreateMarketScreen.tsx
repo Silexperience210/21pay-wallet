@@ -10,8 +10,17 @@ import { ScreenScaffold, PrimaryButton, theme } from '@/ui';
 import { t } from '@/i18n';
 import { useSectionCapabilities } from '../SectionHost';
 import { buildMarketTemplate } from './lib/build';
-import { publishToRelays } from './lib/relay';
+import { publishToRelays, queryRelays } from './lib/relay';
+import { verifyEvent } from './lib/verify';
+import { KIND_ORACLE_ANNOUNCE, aggregateReputation } from './lib/hunch';
+import { fetchReputation } from './lib/oracle';
 import { HUNCH_RELAYS, HUNCH_MINT_URL } from './marketsConfig';
+
+interface OracleSuggestion {
+  pubkey: string;
+  announces: number;
+  rep: string | null;
+}
 
 const DURATIONS = [
   { days: 1, key: 'd1' },
@@ -39,8 +48,37 @@ export function CreateMarketScreen(): React.ReactElement {
   const [resolution, setResolution] = useState('');
   const [oracle, setOracle] = useState(process.env.EXPO_PUBLIC_HUNCH_ORACLE ?? '');
   const [days, setDays] = useState(7);
+  const [suggestions, setSuggestions] = useState<OracleSuggestion[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Oracle discovery: ACTIVE announcers (kind 88) on the relays, decorated with
+  // their aggregated reputation — pick instead of pasting a 64-hex key (UX).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const events = await queryRelays(HUNCH_RELAYS, { kinds: [KIND_ORACLE_ANNOUNCE], limit: 200 });
+        const byOracle = new Map<string, number>();
+        for (const ev of events) {
+          if (!verifyEvent(ev)) continue;
+          byOracle.set(ev.pubkey, (byOracle.get(ev.pubkey) ?? 0) + 1);
+        }
+        const top = [...byOracle.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+        const out: OracleSuggestion[] = [];
+        for (const [pubkey, announces] of top) {
+          const sum = aggregateReputation(await fetchReputation(HUNCH_RELAYS, pubkey, 'oracle').catch(() => []));
+          out.push({ pubkey, announces, rep: sum ? `${sum.avg}/100 (${sum.count})` : null });
+        }
+        if (!cancelled) setSuggestions(out);
+      } catch {
+        /* discovery is best-effort — manual entry stays */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Remember the last oracle used (per-section store) — the common case is one
   // trusted oracle reused across markets.
@@ -134,6 +172,29 @@ export function CreateMarketScreen(): React.ReactElement {
       </View>
 
       <Text style={styles.eyebrow}>{t('markets.create.oracle')}</Text>
+      {suggestions.length > 0 ? (
+        <View style={styles.oracleList}>
+          {suggestions.map((s) => (
+            <Pressable
+              key={s.pubkey}
+              onPress={() => setOracle(s.pubkey)}
+              accessibilityRole="button"
+              style={[styles.oracleRow, oracle.trim().toLowerCase() === s.pubkey && styles.oracleRowOn]}
+            >
+              <Feather
+                name="radio"
+                size={14}
+                color={oracle.trim().toLowerCase() === s.pubkey ? theme.color.accent : theme.color.textMuted}
+              />
+              <Text style={styles.oracleKey}>{s.pubkey.slice(0, 16)}…</Text>
+              <Text style={styles.oracleMeta}>
+                {t('markets.create.announces', { n: String(s.announces) })}
+                {s.rep ? ` · ★ ${s.rep}` : ''}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
       <TextInput
         style={styles.input}
         value={oracle}
@@ -185,6 +246,20 @@ const styles = StyleSheet.create({
   chipOn: { borderColor: theme.color.accent },
   chipText: { fontFamily: theme.font.label.fontFamily, fontSize: 13, color: theme.color.textMuted },
   chipTextOn: { color: theme.color.accent },
+  oracleList: { gap: theme.space.sm, marginBottom: theme.space.sm },
+  oracleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.sm,
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.space.sm,
+  },
+  oracleRowOn: { borderColor: theme.color.accent },
+  oracleKey: { fontFamily: theme.font.mono.fontFamily, fontSize: 12, color: theme.color.text },
+  oracleMeta: { flex: 1, textAlign: 'right', fontFamily: theme.font.body.fontFamily, fontSize: 11, color: theme.color.textMuted },
   oracleHintRow: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.sm, marginTop: theme.space.xs, marginBottom: theme.space.lg },
   hint: { flex: 1, fontFamily: theme.font.body.fontFamily, fontSize: 12, lineHeight: 17, color: theme.color.textMuted, marginTop: theme.space.sm },
   err: { fontFamily: theme.font.body.fontFamily, fontSize: 13, color: theme.color.destructive, marginTop: theme.space.md, textAlign: 'center' },
