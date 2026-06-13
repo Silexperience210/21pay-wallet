@@ -10,6 +10,14 @@ const config: ExpoConfig = {
   orientation: 'portrait',
   scheme: 'pay21',
   userInterfaceStyle: 'automatic',
+  backgroundColor: '#050505',
+  icon: './assets/icon.png',
+  splash: {
+    image: './assets/splash.png',
+    resizeMode: 'contain',
+    backgroundColor: '#050505',
+  },
+  assetBundlePatterns: ['**/*'],
   // SDK 54 Legacy Architecture opt-in so Moti 0.30 / Reanimated 3 work cleanly
   // (Reanimated 4 is New-Architecture-only and breaks Moti — CLAUDE.md constraint 1).
   newArchEnabled: false,
@@ -18,6 +26,10 @@ const config: ExpoConfig = {
     // OS auto-backup disabled so future secret-bearing app data is never
     // exfiltrated to cloud backup (CLAUDE.md constraint 3 / 6).
     allowBackup: false,
+    adaptiveIcon: {
+      foregroundImage: './assets/adaptive-icon.png',
+      backgroundColor: '#050505',
+    },
   },
   plugins: [
     'expo-router',
@@ -35,6 +47,24 @@ const config: ExpoConfig = {
     [
       'react-native-nfc-manager',
       { nfcPermission: 'Tap to pay or receive Bitcoin over NFC.' },
+    ],
+    [
+      'expo-splash-screen',
+      {
+        backgroundColor: '#050505',
+        image: './assets/splash-logo.png',
+        resizeMode: 'contain',
+        dark: {
+          backgroundColor: '#050505',
+          image: './assets/splash-logo.png',
+          resizeMode: 'contain',
+        },
+        android: {
+          backgroundColor: '#050505',
+          image: './assets/splash-logo.png',
+          resizeMode: 'contain',
+        },
+      },
     ],
     // Local plugin: registers the HCE HostApduService so the phone can emulate an NFC
     // tag carrying a Lightning invoice (receive-by-tap without a physical tag).

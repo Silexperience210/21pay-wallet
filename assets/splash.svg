@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1242" height="1242" viewBox="0 0 1242 1242">
+  <defs>
+    <radialGradient id="bgGradSplash" cx="50%" cy="45%" r="80%">
+      <stop offset="0%" stop-color="#111111"/>
+      <stop offset="50%" stop-color="#050505"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </radialGradient>
+    <linearGradient id="boltGradSplash" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F7931A"/>
+      <stop offset="100%" stop-color="#FFAE42"/>
+    </linearGradient>
+    <filter id="glowSplash" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="borderGlowSplash" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1242" height="1242" fill="url(#bgGradSplash)"/>
+
+  <!-- Badge -->
+  <rect x="321" y="321" width="600" height="600" rx="168" ry="168"
+        fill="#0A0A0A" stroke="url(#boltGradSplash)" stroke-width="8"
+        filter="url(#borderGlowSplash)"/>
+
+  <!-- Lightning bolt -->
+  <path d="M 661 441 L 531 636 L 612 636 L 586 801 L 716 606 L 635 606 Z"
+        fill="url(#boltGradSplash)" filter="url(#glowSplash)"/>
+
+  <!-- 21 text -->
+  <text x="621" y="645"
+        text-anchor="middle"
+        font-family="Arial, Helvetica, sans-serif"
+        font-weight="900"
+        font-size="165"
+        fill="#050505"
+        letter-spacing="-6">21</text>
+
+  <!-- PAY -->
+  <text x="621" y="930"
+        text-anchor="middle"
+        font-family="Arial, Helvetica, sans-serif"
+        font-weight="800"
+        font-size="52"
+        fill="#F7931A"
+        letter-spacing="16">PAY</text>
+</svg>

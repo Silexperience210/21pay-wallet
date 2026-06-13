@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#141414"/>
+      <stop offset="60%" stop-color="#050505"/>
+      <stop offset="100%" stop-color="#020202"/>
+    </radialGradient>
+    <linearGradient id="boltGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F7931A"/>
+      <stop offset="100%" stop-color="#FFAE42"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="borderGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="url(#bgGrad)"/>
+
+  <!-- Badge rounded rect -->
+  <rect x="112" y="112" width="800" height="800" rx="224" ry="224"
+        fill="#0A0A0A" stroke="url(#boltGrad)" stroke-width="10"
+        filter="url(#borderGlow)"/>
+
+  <!-- Inner subtle ring -->
+  <rect x="152" y="152" width="720" height="720" rx="192" ry="192"
+        fill="none" stroke="#F7931A" stroke-width="2" opacity="0.25"/>
+
+  <!-- Lightning bolt -->
+  <path d="M 562 252 L 382 560 L 500 560 L 462 772 L 642 464 L 524 464 Z"
+        fill="url(#boltGrad)" filter="url(#glow)"/>
+
+  <!-- 21 text -->
+  <text x="512" y="604"
+        text-anchor="middle"
+        font-family="Arial, Helvetica, sans-serif"
+        font-weight="900"
+        font-size="220"
+        fill="#050505"
+        letter-spacing="-8">21</text>
+
+  <!-- Bottom tagline -->
+  <text x="512" y="840"
+        text-anchor="middle"
+        font-family="Arial, Helvetica, sans-serif"
+        font-weight="700"
+        font-size="64"
+        fill="#F7931A"
+        letter-spacing="12">PAY</text>
+</svg>

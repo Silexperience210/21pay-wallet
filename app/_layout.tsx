@@ -5,7 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { WalletProvider, rehydrate } from '@/wallet';
-import { useAppFonts, theme } from '@/ui';
+import { useAppFonts, BootSplash, theme } from '@/ui';
 
 export default function RootLayout(): React.ReactElement {
   const fontsLoaded = useAppFonts();
@@ -19,7 +19,7 @@ export default function RootLayout(): React.ReactElement {
   }, []);
 
   if (!fontsLoaded || !rehydrated) {
-    return <View style={{ flex: 1, backgroundColor: theme.color.bg }} />;
+    return <BootSplash />;
   }
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

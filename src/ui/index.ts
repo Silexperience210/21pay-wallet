@@ -13,6 +13,7 @@ export { TxList, TxListItem } from './TxList';
 export { BottomNav } from './BottomNav';
 export { EnergyTransfer } from './EnergyTransfer';
 export { SuccessBurst } from './SuccessBurst';
+export { BootSplash } from './BootSplash';
 export { AmountInput } from './AmountInput';
 export { CopyField } from './CopyField';
 export { InvoiceCard } from './InvoiceCard';
