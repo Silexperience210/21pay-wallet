@@ -1,6 +1,6 @@
-import expo.modules.splashscreen.SplashScreenManager
 package org.pay21.wallet
 
+import expo.modules.splashscreen.SplashScreenManager
 import android.os.Build
 import android.os.Bundle
 
