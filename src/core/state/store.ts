@@ -27,6 +27,7 @@ const BADGE_LABELS: Record<BackendKind, string> = {
   'custodial-lnbits': '21pay Custodial',
   nwc: 'Connected Node (NWC)',
   'self-hosted': 'Self-Hosted',
+  ark: 'Ark · Self-Hosted',
 };
 
 // Always available whenever a backend is active — the user can never be misled

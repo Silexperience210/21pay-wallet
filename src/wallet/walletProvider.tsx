@@ -8,7 +8,9 @@ import { CustodialLnbits } from './backends/custodialLnbits';
 import { createCustodialAccount } from './backends/custodialProvision';
 import { NwcRemote, type NwcConnectionConfig } from './backends/nwcRemote';
 import { SelfHostedSpark } from './backends/selfHostedSpark';
+import { ArkBackend } from './backends/arkBackend';
 import type { SparkConfig } from './sparkConfig';
+import { buildArkConfig, type ArkConfig } from './arkConfig';
 import { parseNwcUri } from './backends/nwcConfig';
 import {
   addConnection,
@@ -23,7 +25,7 @@ import {
   loadActiveBackendKind,
 } from './backendPersist';
 import { useWalletStore, insertTx, getPref, setPref, clearTxByBackend } from '../core/state';
-import { cryptoSelfTest, generateMnemonic, storeMnemonic, hasMnemonic, loadSparkSeed } from '../core/keys';
+import { cryptoSelfTest, generateMnemonic, storeMnemonic, hasMnemonic, loadSparkSeed, loadArkSeed } from '../core/keys';
 import { buildSparkConfig } from './sparkConfig';
 import { BoltzSwapService, loadBoltzConfig } from './boltz';
 
@@ -184,6 +186,22 @@ export async function switchToSelfHosted(): Promise<WalletBackend | null> {
   return mnemonic ? activateSelfHosted(buildSparkConfig(mnemonic)) : null;
 }
 
+/** Activate the Ark/Arkade backend (4th custody mode, self-sovereign L2). Additive. */
+export function activateArk(config: ArkConfig): WalletBackend {
+  active = new ArkBackend(config);
+  activeCustodialConfig = null;
+  activeSparkConfig = null;
+  useWalletStore.getState().setActiveBackend('ark'); // badge: 'ark'
+  void persistActiveBackendKind('ark');
+  return active;
+}
+
+/** D-07: switch back to the provisioned Ark wallet (seed already in the vault). */
+export async function switchToArk(): Promise<WalletBackend | null> {
+  const mnemonic = await loadArkSeed();
+  return mnemonic ? activateArk(buildArkConfig(mnemonic)) : null;
+}
+
 /** Re-activate the persisted wallet on app launch, branching by the last active backend
  *  kind (D-05 — nothing is forgotten). Returns the active backend, or null if nothing was
  *  persisted (→ caller shows onboarding). Never throws; a storage hiccup degrades to
@@ -199,6 +217,10 @@ export async function rehydrate(): Promise<WalletBackend | null> {
     if (kind === 'self-hosted') {
       const mnemonic = await loadSparkSeed();
       return mnemonic ? activateSelfHosted(buildSparkConfig(mnemonic)) : null;
+    }
+    if (kind === 'ark') {
+      const mnemonic = await loadArkSeed();
+      return mnemonic ? activateArk(buildArkConfig(mnemonic)) : null;
     }
     // custodial (kind === 'custodial-lnbits' OR legacy null marker): restore the LNbits config
     const config = await loadPersistedCustodialConfig();

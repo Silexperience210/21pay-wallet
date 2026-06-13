@@ -11,7 +11,7 @@ export function isTerminalStatus(s: PaymentStatus): boolean {
   return (PAYMENT_TERMINAL as readonly string[]).includes(s);
 }
 
-export type BackendKind = 'custodial-lnbits' | 'nwc' | 'self-hosted';
+export type BackendKind = 'custodial-lnbits' | 'nwc' | 'self-hosted' | 'ark';
 
 export interface WalletCapabilities {
   onchain: boolean;

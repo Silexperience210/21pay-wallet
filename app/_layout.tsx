@@ -41,6 +41,7 @@ export default function RootLayout(): React.ReactElement {
             <Stack.Screen name="contentwall-view" options={{ presentation: 'fullScreenModal' }} />
             <Stack.Screen name="nwc-connect" options={{ presentation: 'modal' }} />
             <Stack.Screen name="spark-connect" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="ark-connect" options={{ presentation: 'modal' }} />
             <Stack.Screen name="nfc" options={{ presentation: 'fullScreenModal' }} />
             <Stack.Screen name="receive" options={{ presentation: 'modal' }} />
             <Stack.Screen name="backup" options={{ presentation: 'modal' }} />

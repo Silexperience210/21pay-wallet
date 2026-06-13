@@ -31,6 +31,8 @@ export {
   switchToCustodial,
   switchToNwc,
   switchToSelfHosted,
+  activateArk,
+  switchToArk,
 } from './walletProvider';
 export { createCustodialAccount } from './backends/custodialProvision';
 export { clearPersistedBackends } from './backendPersist';
@@ -39,6 +41,9 @@ export type { NwcConnectionConfig, NodeBudget } from './backends/nwcRemote';
 export type { SparkConfig } from './sparkConfig';
 export { SPARK_READY } from './sparkConfig';
 export { provisionSpark } from './sparkProvision';
+export type { ArkConfig } from './arkConfig';
+export { ARK_READY } from './arkConfig';
+export { provisionArk } from './arkProvision';
 export { parseNwcUri } from './backends/nwcConfig';
 // Pure migration orchestration (D-06) — not a concrete backend.
 export { sendAll, isSameNode } from './backends/migration';

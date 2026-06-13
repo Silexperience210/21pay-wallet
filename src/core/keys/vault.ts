@@ -52,6 +52,9 @@ const nwcPresenceKey = (id: string): string => `nwc.present.${id}`;
 const SPARK_DEK_SERVICE = 'org.pay21.wallet.dek.spark';
 const SPARK_CT_KEY = 'spark.seed';
 const SPARK_PRESENCE_KEY = 'spark.present';
+const ARK_DEK_SERVICE = 'org.pay21.wallet.dek.ark';
+const ARK_CT_KEY = 'ark.seed';
+const ARK_PRESENCE_KEY = 'ark.present';
 
 function csprng(out: Uint8Array): Uint8Array {
   const wc = (globalThis as { crypto?: { getRandomValues?: (a: Uint8Array) => Uint8Array } }).crypto;
@@ -286,6 +289,24 @@ export async function hasSparkSeed(): Promise<boolean> {
 /** Forget the Spark seed (self-hosted disconnect). */
 export async function deleteSparkSeed(): Promise<void> {
   await removeNamedSecret(SPARK_DEK_SERVICE, SPARK_CT_KEY, SPARK_PRESENCE_KEY);
+}
+
+/** Store the DEDICATED Ark seed (separate from identity + Spark seeds). */
+export async function storeArkSeed(mnemonic: string): Promise<void> {
+  await putNamedSecret(ARK_DEK_SERVICE, ARK_CT_KEY, ARK_PRESENCE_KEY, mnemonic);
+}
+/** Load the dedicated Ark seed (biometric-gated), or null if not provisioned. */
+export async function loadArkSeed(): Promise<string | null> {
+  return getNamedSecret(ARK_DEK_SERVICE, ARK_CT_KEY);
+}
+/** Prompt-free presence check for the Ark seed. */
+export async function hasArkSeed(): Promise<boolean> {
+  const marker = await SecureStore.getItemAsync(ARK_PRESENCE_KEY, { keychainService: SECURE_STORE_SERVICE });
+  return marker === '1';
+}
+/** Forget the Ark seed (Ark disconnect). */
+export async function deleteArkSeed(): Promise<void> {
+  await removeNamedSecret(ARK_DEK_SERVICE, ARK_CT_KEY, ARK_PRESENCE_KEY);
 }
 
 /** Honest runtime security-level probe. */

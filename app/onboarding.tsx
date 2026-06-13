@@ -10,12 +10,13 @@ import { ScreenScaffold, PrimaryButton, theme } from '@/ui';
 import { createAndActivateCustodial } from '@/wallet';
 import { t } from '@/i18n';
 
-type Rung = 'custodial' | 'nwc' | 'spark';
+type Rung = 'custodial' | 'nwc' | 'spark' | 'ark';
 
 const RUNG_ICONS: Record<Rung, keyof typeof Feather.glyphMap> = {
   custodial: 'zap',
   nwc: 'link',
   spark: 'shield',
+  ark: 'anchor',
 };
 
 function RungCard({
@@ -36,7 +37,7 @@ function RungCard({
       <View style={styles.rungHead}>
         <Feather name={RUNG_ICONS[rung]} size={18} color={selected ? theme.color.accent : theme.color.textMuted} />
         <Text style={styles.rungTitle}>{t(`onboarding.${rung}.title`)}</Text>
-        {rung === 'spark' ? (
+        {rung === 'spark' || rung === 'ark' ? (
           <View style={styles.expBadge}>
             <Text style={styles.expBadgeText}>{t('onboarding.experimental')}</Text>
           </View>
@@ -63,6 +64,10 @@ export default function Onboarding(): React.ReactElement {
       router.push('/spark-connect');
       return;
     }
+    if (selected === 'ark') {
+      router.push('/ark-connect');
+      return;
+    }
     // Custodial rung — the EXISTING provisioning path, reused (D-08).
     setBusy(true);
     try {
@@ -82,6 +87,7 @@ export default function Onboarding(): React.ReactElement {
         <RungCard rung="custodial" selected={selected === 'custodial'} onSelect={() => setSelected('custodial')} />
         <RungCard rung="nwc" selected={selected === 'nwc'} onSelect={() => setSelected('nwc')} />
         <RungCard rung="spark" selected={selected === 'spark'} onSelect={() => setSelected('spark')} />
+        <RungCard rung="ark" selected={selected === 'ark'} onSelect={() => setSelected('ark')} />
       </View>
       <PrimaryButton label={t(`onboarding.${selected}.cta`)} onPress={onContinue} loading={busy} />
       {err ? <Text style={styles.err}>{err}</Text> : null}
