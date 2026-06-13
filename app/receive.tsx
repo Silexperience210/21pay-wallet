@@ -164,7 +164,9 @@ export default function ReceiveScreen(): React.ReactElement {
       const { address: addr } = await wallet.getOnchainAddress(amountSat);
       setAddress(addr);
     } catch {
-      setErr(t('receive.backendErr'));
+      // The on-chain path goes through the Boltz swap provider — a failure here
+      // is usually Boltz being unreachable, NOT the wallet. Say so honestly.
+      setErr(t('receive.onchainErr.generic'));
     } finally {
       setBusy(false);
     }
