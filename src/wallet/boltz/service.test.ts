@@ -143,4 +143,40 @@ describe('BoltzSwapService', () => {
     expect(lnbits.payInvoice).toHaveBeenCalledWith('lnbc...hold');
     expect(repository.upsertSwap).toHaveBeenCalled();
   });
+
+  it('refuses to refund a submarine swap that is not expired', async () => {
+    const lnbits = makeLnbitsMock() as any;
+    const service = new BoltzSwapService(cfg, lnbits);
+    await service.initialize();
+
+    (repository.getSwap as jest.Mock).mockReturnValueOnce({
+      id: 'submarine-swap-id',
+      direction: 'submarine',
+      status: 'swap.created',
+      expiresAt: Date.now() + 3600_000,
+      refunded: false,
+    });
+
+    await expect(service.refundSubmarineSwap('submarine-swap-id', 'bcrt1p...refund')).rejects.toThrow(
+      'swap is not refundable yet',
+    );
+  });
+
+  it('refuses to refund an already-refunded submarine swap', async () => {
+    const lnbits = makeLnbitsMock() as any;
+    const service = new BoltzSwapService(cfg, lnbits);
+    await service.initialize();
+
+    (repository.getSwap as jest.Mock).mockReturnValueOnce({
+      id: 'submarine-swap-id',
+      direction: 'submarine',
+      status: 'swap.expired',
+      expiresAt: Date.now() - 1,
+      refunded: true,
+    });
+
+    await expect(service.refundSubmarineSwap('submarine-swap-id', 'bcrt1p...refund')).rejects.toThrow(
+      'swap already refunded',
+    );
+  });
 });

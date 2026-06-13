@@ -1,6 +1,7 @@
 // Req WALLET-09, ONBD-01 — CustodialLNbits over LNbits REST, mocked fetch (no live server).
 import { CustodialLnbits } from './custodialLnbits';
 import * as net from '../../core/net';
+import * as repository from '../boltz/repository';
 
 jest.mock('../boltz/repository', () => ({
   __esModule: true,
@@ -105,9 +106,9 @@ describe('CustodialLnbits', () => {
     }));
     const { txs } = await new CustodialLnbits(cfg).listTransactions();
     // An unpaid invoice is PENDING — never shown as settled (the screenshot bug).
-    expect(txs[0]).toMatchObject({ id: 'h-pending', status: 'pending', amountSat: 1, direction: 'in' });
-    expect(txs[1]).toMatchObject({ id: 'h-paid', status: 'settled', amountSat: 2 });
-    expect(txs[2]).toMatchObject({ id: 'h-failed', status: 'failed', direction: 'out' });
+    expect(txs[0]).toMatchObject({ id: 'h-pending', status: 'pending', amountSat: 1, direction: 'in', source: 'lightning' });
+    expect(txs[1]).toMatchObject({ id: 'h-paid', status: 'settled', amountSat: 2, source: 'lightning' });
+    expect(txs[2]).toMatchObject({ id: 'h-failed', status: 'failed', direction: 'out', source: 'lightning' });
     // ISO time parses to real ms — never the 01/01/1970 epoch.
     expect(txs[0].createdAt).toBe(Date.parse('2026-06-11T10:07:08.315253+00:00'));
     expect(txs[0].createdAt).toBeGreaterThan(1_700_000_000_000);
@@ -127,8 +128,42 @@ describe('CustodialLnbits', () => {
     expect(txs.find((t) => t.status === 'pending')).toMatchObject({
       status: 'pending',
       createdAt: 1718000000 * 1000,
+      source: 'lightning',
     });
-    expect(txs.find((t) => t.status === 'settled')).toMatchObject({ status: 'settled' });
+    expect(txs.find((t) => t.status === 'settled')).toMatchObject({ status: 'settled', source: 'lightning' });
+  });
+
+  it('listTransactions surfaces Boltz reverse swaps as outgoing on-chain txs', async () => {
+    const mocked = repository as unknown as { listSwaps: jest.Mock };
+    mocked.listSwaps.mockResolvedValueOnce([
+      {
+        id: 's1',
+        direction: 'reverse',
+        asset: 'BTC',
+        status: 'transaction.mempool',
+        createdAt: 1718000002000,
+        expiresAt: Date.now() + 3600_000,
+        keyIndex: 0,
+        ourPublicKey: '00',
+        theirPublicKey: '11',
+        preimageHash: 'aa',
+        swapTree: { claimLeaf: { version: 0, output: '00' }, refundLeaf: { version: 0, output: '11' } },
+        lockupAddress: 'bc1qtest',
+        timeoutBlockHeight: 100,
+        onchainAmount: 9500,
+        claimTxId: 'deadbeef1234',
+      },
+    ]);
+    mockFetch(() => ({ ok: true, status: 200, body: [] }));
+    const { txs } = await new CustodialLnbits(cfg).listTransactions();
+    expect(txs).toHaveLength(1);
+    expect(txs[0]).toMatchObject({
+      id: 'boltz:s1',
+      direction: 'out',
+      amountSat: 9500,
+      status: 'pending',
+      source: 'onchain',
+    });
   });
 
   it('never leaks the admin key in an error message', async () => {

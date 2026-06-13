@@ -5,6 +5,7 @@ import type {
   BoltzStatus,
   ClaimSignatureRequest,
   ClaimSignatureResponse,
+  RefundSignatureRequest,
   CreateReverseSwapRequest,
   CreateReverseSwapResponse,
   CreateSubmarineSwapRequest,
@@ -108,6 +109,17 @@ export class BoltzClient {
       body: sig,
       idempotent: false,
     });
+  }
+
+  async getSubmarineRefundSignature(id: string, req: RefundSignatureRequest): Promise<ClaimSignatureResponse> {
+    const res = await httpRequest<ClaimSignatureResponse>({
+      baseUrl: this.baseUrl,
+      path: `/swap/submarine/${id}/refund`,
+      method: 'POST',
+      body: req,
+      idempotent: false,
+    });
+    return res.data;
   }
 
   async getReverseClaimSignature(

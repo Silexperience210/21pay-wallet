@@ -6,6 +6,7 @@ import { MotiView } from 'moti';
 import { Feather } from '@expo/vector-icons';
 import { formatSats } from '../wallet/format';
 import type { PaymentStatus, WalletTx } from '../wallet';
+import { t } from '../i18n';
 import { theme } from './theme';
 import { useReducedMotion } from './useReducedMotion';
 
@@ -34,16 +35,28 @@ export function TxListItem({
       transition={{ type: 'timing', duration: reduced ? 1 : 300, delay: reduced ? 0 : Math.min(index, 8) * 40 }}
       style={styles.row}
     >
-      <Feather
-        name={incoming ? 'arrow-down-left' : 'arrow-up-right'}
-        size={18}
-        color={incoming ? theme.color.accent : theme.color.textMuted}
-      />
+      <View style={styles.iconCol}>
+        <Feather
+          name={incoming ? 'arrow-down-left' : 'arrow-up-right'}
+          size={18}
+          color={incoming ? theme.color.accent : theme.color.textMuted}
+        />
+        {tx.source === 'onchain' ? (
+          <Feather name="link" size={10} color={theme.color.textMuted} style={styles.sourceIcon} />
+        ) : null}
+      </View>
       <View style={styles.mid}>
         <Text style={styles.amount}>
           {incoming ? '+' : '-'}
           {formatSats(tx.amountSat)}
         </Text>
+        {tx.source === 'onchain' ? (
+          <Text style={styles.memo}>
+            {tx.direction === 'in' ? t('tx.onchainDeposit') : t('tx.onchainSend')}
+          </Text>
+        ) : tx.memo ? (
+          <Text style={styles.memo}>{tx.memo}</Text>
+        ) : null}
         <View style={styles.statusRow}>
           <Feather name={s.icon} size={12} color={s.color} />
           <Text style={[styles.status, { color: s.color }]}>{s.label}</Text>
@@ -76,8 +89,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.color.border,
   },
+  iconCol: { alignItems: 'center', justifyContent: 'center' },
+  sourceIcon: { marginTop: -2 },
   mid: { flex: 1 },
   amount: { fontFamily: theme.font.mono.fontFamily, fontSize: 15, color: theme.color.text },
+  memo: { fontFamily: theme.font.body.fontFamily, fontSize: 12, color: theme.color.textMuted, marginTop: 2 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   status: { fontFamily: theme.font.label.fontFamily, fontSize: 11 },
   time: { fontFamily: theme.font.mono.fontFamily, fontSize: 11, color: theme.color.textMuted },

@@ -128,6 +128,11 @@ const en: Dict = {
   'send.onchainErr.expired': 'Swap expired before lockup.',
   'send.onchainErr.lockupFailed': 'Boltz could not lock the on-chain funds.',
   'send.onchainErr.invalidAddress': 'Invalid on-chain address.',
+  // Transactions
+  'tx.onchainDeposit': 'On-chain deposit',
+  'tx.onchainSend': 'On-chain send',
+  'tx.refund': 'Refund sats',
+  'tx.refundDone': 'Refund broadcast',
   // Scan
   'scan.unknown': "Couldn't read that code — try again.",
   'scan.torchOn': 'Torch on',
@@ -530,6 +535,11 @@ const fr: Dict = {
   'send.onchainErr.expired': 'Swap expiré avant le lockup.',
   'send.onchainErr.lockupFailed': 'Boltz n’a pas pu verrouiller les fonds on-chain.',
   'send.onchainErr.invalidAddress': 'Adresse on-chain invalide.',
+  // Transactions
+  'tx.onchainDeposit': 'Dépôt on-chain',
+  'tx.onchainSend': 'Envoi on-chain',
+  'tx.refund': 'Récupérer les sats',
+  'tx.refundDone': 'Remboursement diffusé',
   // Scan
   'scan.unknown': 'Code illisible — réessaie.',
   'scan.torchOn': 'Lampe',

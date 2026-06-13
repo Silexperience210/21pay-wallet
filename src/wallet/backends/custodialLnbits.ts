@@ -168,6 +168,7 @@ export class CustodialLnbits implements WalletBackend {
       status: mapListPaymentStatus(p),
       createdAt: parsePaymentTimeMs(p),
       memo: p.memo,
+      source: 'lightning',
     }));
 
     // Include Boltz swaps in the custodial history. Reverse swaps are shown as outgoing
@@ -184,6 +185,7 @@ export class CustodialLnbits implements WalletBackend {
         status: this.mapBoltzStatus(s.status, s.expiresAt),
         createdAt: s.createdAt,
         memo: s.direction === 'reverse' ? `On-chain send${s.claimTxId ? ` · ${s.claimTxId.slice(0, 8)}` : ''}` : 'On-chain deposit',
+        source: 'onchain',
       }));
 
     const all = [...lnTxs, ...swapTxs].sort((a, b) => b.createdAt - a.createdAt);
@@ -207,6 +209,12 @@ export class CustodialLnbits implements WalletBackend {
   async reconcileSwap(swapId: string): Promise<PaymentStatus> {
     if (!this.boltz) throw new Error('on-chain unavailable');
     return this.boltz.reconcileSwap(swapId);
+  }
+
+  /** Refund an expired submarine swap back to the user's on-chain address. */
+  async refundSubmarineSwap(swapId: string, destinationAddress: string, feeRate?: number): Promise<{ txid: string }> {
+    if (!this.boltz) throw new Error('on-chain unavailable');
+    return this.boltz.refundSubmarineSwap(swapId, destinationAddress, feeRate);
   }
 
   /** On-chain receive: present a Boltz HTLC address that settles into Lightning. */

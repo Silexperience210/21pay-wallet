@@ -36,4 +36,6 @@ export interface WalletTx {
   status: PaymentStatus;
   createdAt: number;
   memo?: string;
+  /** How the transaction settled: Lightning or on-chain (Boltz swap). */
+  source?: 'lightning' | 'onchain';
 }

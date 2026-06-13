@@ -127,6 +127,12 @@ export interface ClaimSignatureRequest {
   pubNonce: string; // hex
 }
 
+export interface RefundSignatureRequest {
+  index: number;
+  transaction: string; // hex
+  pubNonce: string; // hex
+}
+
 export interface ClaimSignatureResponse {
   pubNonce: string; // hex
   partialSignature: string; // hex

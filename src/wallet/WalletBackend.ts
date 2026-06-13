@@ -32,6 +32,9 @@ export interface WalletBackend {
   // Advance a Boltz swap to its terminal state. Only present for on-chain-capable backends.
   reconcileSwap?(swapId: string): Promise<PaymentStatus>;
 
+  // Refund an expired submarine swap back to the user's on-chain address.
+  refundSubmarineSwap?(swapId: string, destinationAddress: string, feeRate?: number): Promise<{ txid: string }>;
+
   // Capability-gated: produce an LNURL-withdraw link to present as an HCE card so a
   // terminal can PULL a payment (BoltCard-style tap-to-pay). Needs the LNbits
   // withdraw/boltcards extension; absent → feature unavailable.

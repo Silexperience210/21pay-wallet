@@ -14,6 +14,7 @@ import {
   SwapTreeSerializer,
   TaprootUtils,
   constructClaimTransaction as boltzConstructClaimTransaction,
+  constructRefundTransaction as boltzConstructRefundTransaction,
   targetFee as boltzTargetFee,
 } from 'boltz-core';
 type BoltzCoreSwapTree = ReturnType<typeof SwapTreeSerializer.deserializeSwapTree>;
@@ -90,6 +91,35 @@ export interface ClaimTxInput {
   swapTree: BoltzCoreSwapTree;
 }
 
+export interface RefundTxInput {
+  transactionId: string;
+  vout: number;
+  script: Uint8Array;
+  amount: bigint;
+  privateKey: Uint8Array;
+  swapTree: BoltzCoreSwapTree;
+  internalKey: Uint8Array;
+}
+
+export function buildRefundTransaction(
+  utxo: RefundTxInput,
+  destinationScript: Uint8Array,
+  feeSatPerVb: number,
+  timeoutBlockHeight: number,
+): Transaction {
+  const detail = {
+    ...utxo,
+    type: OutputType.Taproot,
+    cooperative: false,
+  } as any;
+  const tx = boltzTargetFee(feeSatPerVb, (fee) =>
+    boltzConstructRefundTransaction([detail], destinationScript, timeoutBlockHeight, fee, true),
+  );
+  // Provide the previous output info so @scure/btc-signer can serialize the tx.
+  tx.updateInput(0, { witnessUtxo: { script: utxo.script, amount: utxo.amount } });
+  return tx;
+}
+
 export function buildCooperativeClaimTransaction(
   utxos: ClaimTxInput[],
   destinationScript: Uint8Array,
@@ -106,6 +136,10 @@ export function buildCooperativeClaimTransaction(
   const tx = boltzTargetFee(feeSatPerVb, (fee) =>
     boltzConstructClaimTransaction(details, destinationScript, fee, true, timeoutBlockHeight, false),
   );
+  // Provide previous output info so @scure/btc-signer can serialize the tx.
+  for (let i = 0; i < utxos.length; i++) {
+    tx.updateInput(i, { witnessUtxo: { script: utxos[i]!.script, amount: utxos[i]!.amount } });
+  }
   return tx;
 }
 

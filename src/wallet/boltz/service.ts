@@ -16,10 +16,12 @@ import {
   tweakMusigAggregateKey,
   detectSwapOutput,
   buildCooperativeClaimTransaction,
+  buildRefundTransaction,
   generateOurNonce,
   createMuSig2Session,
   toOutputScript,
   type ClaimTxInput,
+  type RefundTxInput,
 } from './crypto';
 import * as repository from './repository';
 import type {
@@ -355,6 +357,9 @@ export class BoltzSwapService {
 
     const latest = await this.client.getSwapStatus(swapId);
     if (!latest.transaction?.hex) throw new Error('lockup transaction not available yet');
+    const lockupTxHex = latest.transaction.hex;
+    const lockupTx = Transaction.fromRaw(hex.decode(lockupTxHex));
+    const lockupTxId = latest.transaction.id ?? lockupTx.id;
 
     return this.withMnemonic(async (mnemonic) => {
       const { privateKey } = deriveSwapKeyPair(mnemonic, swap.keyIndex);
@@ -363,9 +368,8 @@ export class BoltzSwapService {
       const coreTree = deserializeSwapTree(swap.swapTree);
       const tweakedKey = tweakMusigAggregateKey(privateKey, boltzPubkey, coreTree);
 
-      if (!latest.transaction?.hex) throw new Error('lockup transaction not available yet');
-      const lockupTx = Transaction.fromRaw(hex.decode(latest.transaction.hex));
       const output = detectSwapOutput(tweakedKey, lockupTx);
+      if (!output) throw new Error('swap output not found in lockup transaction');
       if (!output) throw new Error('swap output not found in lockup transaction');
 
       const network = boltzNetworkName(this.cfg.network);
@@ -373,7 +377,7 @@ export class BoltzSwapService {
       const tx = buildCooperativeClaimTransaction(
         [
           {
-            transactionId: latest.transaction.id!,
+            transactionId: lockupTxId!,
             vout: output.vout,
             script: output.script,
             amount: output.amount,
@@ -418,6 +422,96 @@ export class BoltzSwapService {
       onProgress?.('done');
       return { txid: broadcasted.id };
     });
+  }
+
+  /** Refund a submarine swap that expired or failed to lock up. */
+  async refundSubmarineSwap(
+    swapId: string,
+    destinationAddress: string,
+    feeRate = DEFAULT_FEE_RATE,
+  ): Promise<{ txid: string }> {
+    const swap = repository.getSwap(swapId);
+    if (!swap || swap.direction !== 'submarine') throw new Error('not a submarine swap');
+    if (swap.refunded) throw new Error('swap already refunded');
+    if (!this.isRefundableStatus(swap.status, swap.expiresAt)) {
+      throw new Error('swap is not refundable yet');
+    }
+
+    const latest = await this.client.getSwapStatus(swapId);
+    if (!latest.transaction?.hex) throw new Error('lockup transaction not available yet');
+    const lockupTxHex = latest.transaction.hex;
+    const lockupTx = Transaction.fromRaw(hex.decode(lockupTxHex));
+    const lockupTxId = latest.transaction.id ?? lockupTx.id;
+
+    return this.withMnemonic(async (mnemonic) => {
+      const { privateKey } = deriveSwapKeyPair(mnemonic, swap.keyIndex);
+      const boltzPubkey = hex.decode(swap.theirPublicKey);
+      const coreTree = deserializeSwapTree(swap.swapTree);
+      const tweakedKey = tweakMusigAggregateKey(privateKey, boltzPubkey, coreTree);
+
+      const output = detectSwapOutput(tweakedKey, lockupTx);
+      if (!output) throw new Error('swap output not found in lockup transaction');
+
+      const network = boltzNetworkName(this.cfg.network);
+      const destinationScript = toOutputScript(destinationAddress, network);
+
+      // Try cooperative refund first (lower fees, but Boltz may be unresponsive).
+      try {
+        const tx = buildRefundTransaction(
+          {
+            transactionId: lockupTxId!,
+            vout: output.vout,
+            script: output.script,
+            amount: output.amount,
+            privateKey,
+            swapTree: coreTree,
+            internalKey: tweakedKey,
+          } satisfies RefundTxInput,
+          destinationScript,
+          feeRate,
+          swap.timeoutBlockHeight,
+        );
+        const sighash = tx.preimageWitnessV1(0, [output.script], SigHash.DEFAULT, [output.amount]);
+        const ourNonce = generateOurNonce(privateKey, boltzPubkey, coreTree, sighash);
+        const sig = await this.client.getSubmarineRefundSignature(swapId, {
+          index: 0,
+          transaction: hex.encode(tx.extract()),
+          pubNonce: hex.encode(ourNonce.public),
+        });
+        const session = createMuSig2Session(privateKey, boltzPubkey, coreTree, hex.decode(sig.pubNonce), ourNonce, sighash);
+        session.addBoltzPartial(hex.decode(sig.partialSignature));
+        tx.updateInput(0, { finalScriptWitness: [session.aggregatePartials()] });
+        const broadcasted = await this.client.broadcastTransaction(this.cfg.pair.from, hex.encode(tx.extract()));
+        repository.markSwapRefunded(swapId);
+        return { txid: broadcasted.id };
+      } catch {
+        /* fall back to non-cooperative script-path refund */
+      }
+
+      const tx = buildRefundTransaction(
+        {
+          transactionId: lockupTxId!,
+          vout: output.vout,
+          script: output.script,
+          amount: output.amount,
+          privateKey,
+          swapTree: coreTree,
+          internalKey: tweakedKey,
+        } satisfies RefundTxInput,
+        destinationScript,
+        feeRate,
+        swap.timeoutBlockHeight,
+      );
+      const broadcasted = await this.client.broadcastTransaction(this.cfg.pair.from, hex.encode(tx.extract()));
+      repository.markSwapRefunded(swapId);
+      return { txid: broadcasted.id };
+    });
+  }
+
+  private isRefundableStatus(status: BoltzStatus, expiresAt: number): boolean {
+    if (status === 'swap.expired' || status === 'invoice.expired' || status === 'transaction.lockupFailed') return true;
+    if (Date.now() > expiresAt) return true;
+    return false;
   }
 
   private async cooperateSubmarineClaim(swap: PersistedSwap): Promise<void> {
