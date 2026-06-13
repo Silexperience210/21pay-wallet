@@ -255,7 +255,7 @@ export default function ReceiveScreen(): React.ReactElement {
             label={t('receive.showAddress')}
             onPress={showAddress}
             loading={busy}
-            disabled={!quote}
+            disabled={!amountSat || amountSat < 1}
           />
         </View>
       )}

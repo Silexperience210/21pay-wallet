@@ -20,8 +20,14 @@ export function loadBoltzConfig(): BoltzConfig {
   const pairRaw = process.env.EXPO_PUBLIC_BOLTZ_PAIR ?? 'BTC/BTC';
   const [from, to] = pairRaw.split('/').map((s: string) => s.trim() as SwapAsset);
   if (!from || !to) throw new Error('EXPO_PUBLIC_BOLTZ_PAIR must be "FROM/TO" (e.g. BTC/BTC)');
+  // The Boltz REST API is versioned under /v2 (e.g. /v2/swap/submarine). The client
+  // appends bare paths like '/swap/submarine', so the base URL MUST carry /v2 —
+  // without it every call 404s and quotes silently fail (on-chain button dead).
+  // Append it here if a host-only URL was provided (env override or the default).
+  const base = url.replace(/\/+$/, '');
+  const apiUrl = /\/v\d+$/.test(base) ? base : `${base}/v2`;
   return {
-    apiUrl: url.replace(/\/+$/, ''),
+    apiUrl,
     network,
     pair: { from, to },
     referralId: process.env.EXPO_PUBLIC_BOLTZ_REFERRAL || undefined,
