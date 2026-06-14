@@ -3,16 +3,17 @@
 // melted back into the in-app wallet; INVALID/silence opens the refund branch (b)
 // after the locktime. All failures render inline (MARKET-07 layer 3).
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { ScreenScaffold, PrimaryButton, SecondaryButton, theme } from '@/ui';
 import { t } from '@/i18n';
 import { useSectionCapabilities } from '../SectionHost';
 import type { OracleAttestation } from './lib/hunch';
 import { fetchAttestation } from './lib/oracle';
+import { sendTip, TIP_PRESETS } from './lib/tips';
 import { loadPositions, type BetPosition } from './positions';
 import { settlePosition, refundPosition } from './betFlow';
-import { HUNCH_RELAYS } from './marketsConfig';
+import { HUNCH_RELAYS, HUNCH_TIP_ADDRESS } from './marketsConfig';
 
 interface Row {
   position: BetPosition;
@@ -27,6 +28,8 @@ export function PositionsScreen(): React.ReactElement {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [tipBusy, setTipBusy] = useState(false);
+  const [tipMsg, setTipMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -97,6 +100,20 @@ export function PositionsScreen(): React.ReactElement {
     }
   };
 
+  const onTip = async (sats: number) => {
+    if (tipBusy) return;
+    setTipBusy(true);
+    setTipMsg(null);
+    try {
+      await sendTip(caps, HUNCH_TIP_ADDRESS, sats);
+      setTipMsg(t('markets.tip.done', { sats: String(sats) }));
+    } catch {
+      setTipMsg(t('markets.tip.err'));
+    } finally {
+      setTipBusy(false);
+    }
+  };
+
   const now = Math.floor(Date.now() / 1000);
 
   return (
@@ -149,6 +166,28 @@ export function PositionsScreen(): React.ReactElement {
             );
           })
         )}
+
+        {/* Opt-in operator tip (Hunch tips.ts model) — explicit, paid from the in-app wallet */}
+        <View style={styles.tipCard}>
+          <Text style={styles.tipTitle}>{t('markets.tip.title')}</Text>
+          <Text style={styles.tipBody}>{t('markets.tip.body')}</Text>
+          <View style={styles.tipRow}>
+            {TIP_PRESETS.map((p) => (
+              <Pressable
+                key={p}
+                onPress={() => onTip(p)}
+                accessibilityRole="button"
+                disabled={tipBusy}
+                style={styles.tipChip}
+              >
+                <Feather name="zap" size={12} color={theme.color.accent} />
+                <Text style={styles.tipChipText}>{p.toLocaleString('fr-FR')}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {tipBusy ? <Text style={styles.tipMsg}>{t('markets.tip.sending')}</Text> : null}
+          {tipMsg ? <Text style={styles.tipMsg}>{tipMsg}</Text> : null}
+        </View>
       </ScrollView>
     </ScreenScaffold>
   );
@@ -168,4 +207,27 @@ const styles = StyleSheet.create({
   wonRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
   wonText: { fontFamily: theme.font.mono.fontFamily, fontSize: 13, color: theme.color.success },
   hint: { fontFamily: theme.font.body.fontFamily, fontSize: 12, color: theme.color.textMuted },
+  tipCard: {
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    borderRadius: theme.radius.md,
+    padding: theme.space.lg,
+    gap: theme.space.sm,
+    marginTop: theme.space.lg,
+  },
+  tipTitle: { fontFamily: theme.font.label.fontFamily, fontSize: 14, color: theme.color.text },
+  tipBody: { fontFamily: theme.font.body.fontFamily, fontSize: 12, lineHeight: 17, color: theme.color.textMuted },
+  tipRow: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.space.xs },
+  tipChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: theme.color.accent,
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.space.xs,
+  },
+  tipChipText: { fontFamily: theme.font.mono.fontFamily, fontSize: 12, color: theme.color.accent },
+  tipMsg: { fontFamily: theme.font.body.fontFamily, fontSize: 12, color: theme.color.textMuted, marginTop: theme.space.xs },
 });

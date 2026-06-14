@@ -89,6 +89,9 @@ export function MarketsBrowseScreen(): React.ReactElement {
           <Text style={styles.netBadgeText}>{HUNCH_NETWORK}</Text>
         </View>
         <View style={styles.headerBtn}>
+          <SecondaryButton label={t('markets.walletEntry')} onPress={() => router.push('/(sections)/markets/wallet')} />
+        </View>
+        <View style={styles.headerBtn}>
           <SecondaryButton label={t('markets.positions')} onPress={() => router.push('/(sections)/markets/positions')} />
         </View>
       </View>
