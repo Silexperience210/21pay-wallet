@@ -15,6 +15,8 @@ import {
   purchaseContentUrl,
   listMyItems,
   createArticleItem,
+  getItemStats,
+  statsSummary,
   shareUrl,
 } from './contentwall';
 import type { CustodialLnbitsConfig } from './lnbitsConfig';
@@ -146,5 +148,46 @@ describe('creator flow (LNbits-keyed)', () => {
 
   it('shareUrl builds the public paywall link', () => {
     expect(shareUrl(ITEM)).toBe(`https://21pay.org/contentwall/${ITEM}`);
+  });
+});
+
+describe('creator stats', () => {
+  it('getItemStats reads with the INVOICE key and passes the backend fields through', async () => {
+    mockHttp.mockResolvedValueOnce({
+      status: 200,
+      data: { item_id: ITEM, payment_count: 3, total_sats: 630, unique_payers: 3, last_payment_at: '2026-06-14T00:00:00Z' },
+    });
+    const s = await getItemStats(CFG, ITEM);
+    expect(lastCall()).toMatchObject({
+      path: `/contentwall/api/v1/stats/items/${ITEM}`,
+      headers: { 'X-Api-Key': 'invoice-key' },
+      idempotent: true,
+    });
+    // The extension speaks payment_count / total_sats — NOT sales / revenue.
+    expect(s).toMatchObject({ payment_count: 3, total_sats: 630 });
+  });
+
+  it('getItemStats degrades to null when the read fails (best-effort decoration)', async () => {
+    mockHttp.mockRejectedValueOnce(new Error('500'));
+    await expect(getItemStats(CFG, ITEM)).resolves.toBeNull();
+  });
+
+  // Regression: the Studio used to read s.sales / s.revenue, which never exist
+  // in the response, so every item showed "0 ventes · 0 sats" no matter how
+  // many times it was paid. statsSummary is the single mapping the screen uses;
+  // lock it to the real backend field names.
+  it('statsSummary maps payment_count→sales and total_sats→revenue', () => {
+    expect(statsSummary({ item_id: ITEM, payment_count: 3, total_sats: 630 })).toEqual({ sales: 3, revenue: 630 });
+  });
+
+  it('statsSummary is zero-safe for null / missing fields', () => {
+    expect(statsSummary(null)).toEqual({ sales: 0, revenue: 0 });
+    expect(statsSummary(undefined)).toEqual({ sales: 0, revenue: 0 });
+    expect(statsSummary({ item_id: ITEM })).toEqual({ sales: 0, revenue: 0 });
+  });
+
+  it('statsSummary ignores the old sales/revenue keys if a stale backend sends them', () => {
+    // Guards against silently re-trusting non-canonical fields.
+    expect(statsSummary({ sales: 99, revenue: 99 } as never)).toEqual({ sales: 0, revenue: 0 });
   });
 });

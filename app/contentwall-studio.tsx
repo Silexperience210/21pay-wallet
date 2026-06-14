@@ -17,6 +17,7 @@ import {
   createMediaItem,
   uploadItemFile,
   getItemStats,
+  statsSummary,
   archiveItem,
   deleteItem,
   shareUrl,
@@ -309,13 +310,14 @@ export default function ContentwallStudio(): React.ReactElement {
       ) : (
         items.map((it) => {
           const s = stats[it.id];
+          const summary = s ? statsSummary(s) : null;
           return (
             <View key={it.id} style={styles.row}>
               <View style={styles.rowMain}>
                 <Text style={styles.rowTitle}>{it.title}</Text>
                 <Text style={styles.rowSub}>
                   {it.amount.toLocaleString('fr-FR')} sats · {it.content_type}
-                  {s ? ` · ${t('cw.statsLine', { sales: String(s.sales ?? 0), revenue: String(s.revenue ?? 0) })}` : ''}
+                  {summary ? ` · ${t('cw.statsLine', { sales: String(summary.sales), revenue: String(summary.revenue) })}` : ''}
                 </Text>
               </View>
               <View style={styles.rowActions}>

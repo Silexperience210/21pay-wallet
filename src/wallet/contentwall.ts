@@ -62,10 +62,16 @@ export interface ContentwallItem extends PublicItem {
   archived_at?: string | null;
 }
 
+// Mirrors the extension's ItemStats (crud.get_item_stats / models.ItemStats):
+// payment_count = sales, total_sats = revenue. The studio maps these to its
+// "{sales} ventes · {revenue} sats" line — do NOT rename to sales/revenue here,
+// those keys are not in the JSON and silently read as 0.
 export interface ItemStats {
-  views?: number;
-  sales?: number;
-  revenue?: number;
+  item_id?: string;
+  payment_count?: number;
+  total_sats?: number;
+  unique_payers?: number;
+  last_payment_at?: string | null;
   [k: string]: unknown;
 }
 
@@ -368,6 +374,15 @@ export async function getItemStats(cfg: CustodialLnbitsConfig, itemId: string): 
   } catch {
     return null;
   }
+}
+
+/** Maps the extension's ItemStats onto the creator-facing summary the Studio
+ *  renders ("{sales} ventes · {revenue} sats"). Lives here (not inline in the
+ *  screen) so the field mapping is unit-tested: payment_count→sales,
+ *  total_sats→revenue. Renaming a backend field then breaks the test loudly
+ *  instead of silently showing 0 (the original ContentWall stats bug). */
+export function statsSummary(s: ItemStats | null | undefined): { sales: number; revenue: number } {
+  return { sales: s?.payment_count ?? 0, revenue: s?.total_sats ?? 0 };
 }
 
 /** The public share link for an item — what a creator posts anywhere. */
