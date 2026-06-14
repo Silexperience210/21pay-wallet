@@ -57,3 +57,11 @@ export function impliedOdds(book: OrderBook): ImpliedOdds | null {
   const yes = Math.round((y / total) * 100);
   return { yes, no: 100 - yes };
 }
+
+/** P(YES) in 0..1 for the AMM to anchor on: the book's implied odds when there is
+ *  two-sided demand, else 50/50. Mirrors hunch-web's `anchorProb` (market/page.tsx) —
+ *  the AMM means no market is ever un-bettable, even with an empty book. */
+export function anchorProb(book: OrderBook | null): number {
+  const odds = book ? impliedOdds(book) : null;
+  return odds ? odds.yes / 100 : 0.5;
+}
