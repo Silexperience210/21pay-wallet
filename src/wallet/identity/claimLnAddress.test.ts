@@ -46,10 +46,20 @@ describe('checkLnAddressAvailable', () => {
 });
 
 describe('claimLnAddress', () => {
-  it('returns the formatted address on success', async () => {
+  it('creates the link with the ADMIN key and disposable:false (verified live)', async () => {
+    // Regression guard: the invoice key returns 403 "Invalid adminkey." on real LNbits,
+    // and an omitted `disposable` makes a single-use link.
     const request = jest.fn().mockResolvedValue({ status: 201, data: { id: 'link1' } });
     const { lnAddress } = await claimLnAddress('alice', cfg, request as never);
     expect(lnAddress).toBe(`alice@${LN_ADDRESS_DOMAIN}`);
+    const arg = request.mock.calls[0][0];
+    expect(arg).toMatchObject({
+      path: '/lnurlp/api/v1/links',
+      method: 'POST',
+      apiKey: cfg.adminKey,
+    });
+    expect(arg.apiKey).not.toBe(cfg.invoiceKey);
+    expect(arg.body).toMatchObject({ username: 'alice', disposable: false });
   });
 
   it('rejects an invalid handle before any network call', async () => {
@@ -58,7 +68,27 @@ describe('claimLnAddress', () => {
     expect(request).not.toHaveBeenCalled();
   });
 
-  it('never leaks the API key to the console', async () => {
+  it('enables the lnurlp extension and retries once on a 403 (when userId is known)', async () => {
+    const request = jest
+      .fn()
+      .mockRejectedValueOnce(new HttpError(403, 'client', 'request failed (403)'))
+      .mockResolvedValueOnce({ status: 201, data: { id: 'link1' } });
+    const enable = jest.fn().mockResolvedValue(undefined);
+    const cfgWithUser = { ...cfg, userId: 'user-123' };
+    const { lnAddress } = await claimLnAddress('alice', cfgWithUser, request as never, enable);
+    expect(lnAddress).toBe(`alice@${LN_ADDRESS_DOMAIN}`);
+    expect(enable).toHaveBeenCalledWith('user-123');
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it('propagates a 403 when no userId is known (cannot self-heal)', async () => {
+    const request = jest.fn().mockRejectedValue(new HttpError(403, 'client', 'request failed (403)'));
+    const enable = jest.fn();
+    await expect(claimLnAddress('alice', cfg, request as never, enable)).rejects.toThrow();
+    expect(enable).not.toHaveBeenCalled();
+  });
+
+  it('never leaks an API key to the console', async () => {
     const spies = [
       jest.spyOn(console, 'log').mockImplementation(() => {}),
       jest.spyOn(console, 'error').mockImplementation(() => {}),
@@ -68,6 +98,7 @@ describe('claimLnAddress', () => {
     await claimLnAddress('alice', cfg, request as never);
     for (const s of spies) {
       for (const call of s.mock.calls) {
+        expect(JSON.stringify(call)).not.toContain(cfg.adminKey);
         expect(JSON.stringify(call)).not.toContain(cfg.invoiceKey);
       }
       s.mockRestore();

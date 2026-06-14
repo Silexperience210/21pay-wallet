@@ -3,10 +3,12 @@
 // API keys are passed via cfg and NEVER logged or placed in error messages.
 import { httpRequest, HttpError } from '../../core/net';
 import type { CustodialLnbitsConfig } from '../lnbitsConfig';
+import { enableFreeExtensions } from '../lnbitsExtensions';
 import { validateLnAddressHandle, LN_ADDRESS_DOMAIN } from './lnAddressHandle';
 
 // Injectable for tests; defaults to the real client.
 type RequestFn = typeof httpRequest;
+type EnableFn = (userId: string) => Promise<void>;
 
 /**
  * Is `name@LN_ADDRESS_DOMAIN` claimable? Validates the handle first (invalid → false
@@ -42,28 +44,50 @@ export async function checkLnAddressAvailable(
 /**
  * Claim `name@21pay` by creating an LNbits LNURLp pay link bound to username=name.
  * Validates the handle; throws on an invalid handle. Returns the formatted address.
+ *
+ * Verified live against 21pay.org (2026-06-14): `POST /lnurlp/api/v1/links` requires
+ * the ADMIN key — the invoice key returns 403 "Invalid adminkey." And the link must be
+ * `disposable: false` or LNbits creates a single-use link (defaults to disposable).
+ * If the wallet's lnurlp extension isn't enabled yet it 403s; we enable it (login-by-usr)
+ * once and retry, so accounts created before auto-enable can still claim.
  */
 export async function claimLnAddress(
   name: string,
   cfg: CustodialLnbitsConfig,
   request: RequestFn = httpRequest,
+  enable: EnableFn = enableFreeExtensions,
 ): Promise<{ lnAddress: string }> {
   const v = validateLnAddressHandle(name);
   if (!v.valid) throw new Error(v.reason ?? 'Invalid handle.');
 
-  await request<{ id: string }>({
-    baseUrl: cfg.baseUrl,
-    path: '/lnurlp/api/v1/links',
-    method: 'POST',
-    apiKey: cfg.invoiceKey, // never logged (HttpError messages omit the key)
-    body: {
-      description: `${name}@${LN_ADDRESS_DOMAIN}`,
-      username: name,
-      min: 1,
-      max: 100_000_000,
-      comment_chars: 0,
-    },
-  });
+  const create = () =>
+    request<{ id: string }>({
+      baseUrl: cfg.baseUrl,
+      path: '/lnurlp/api/v1/links',
+      method: 'POST',
+      apiKey: cfg.adminKey, // ADMIN key required by lnurlp (invoice key → 403); never logged
+      body: {
+        description: `${name}@${LN_ADDRESS_DOMAIN}`,
+        username: name,
+        min: 1,
+        max: 100_000_000,
+        comment_chars: 0,
+        disposable: false, // permanent, reusable address (not a single-use link)
+      },
+    });
+
+  try {
+    await create();
+  } catch (e) {
+    // 403 on a valid admin key ⇒ the lnurlp extension isn't enabled for this wallet.
+    // Enable it once and retry; if it still fails, the real error propagates.
+    if (e instanceof HttpError && e.status === 403 && cfg.userId) {
+      await enable(cfg.userId);
+      await create();
+    } else {
+      throw e;
+    }
+  }
 
   return { lnAddress: `${name}@${LN_ADDRESS_DOMAIN}` };
 }
