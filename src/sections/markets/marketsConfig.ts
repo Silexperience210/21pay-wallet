@@ -26,3 +26,14 @@ export const BET_MAX_SAT = 100_000;
 export function mintUrlForMarket(marketMintTag: string): string {
   return /^https:\/\//i.test(marketMintTag) ? marketMintTag : HUNCH_MINT_URL;
 }
+
+/** The Hunch web frontend (multi-frontend by design) — used to build shareable market
+ *  links. Anyone hosting their own frontend can override via env. */
+export const HUNCH_WEB_URL: string = (
+  process.env.EXPO_PUBLIC_HUNCH_WEB ?? 'https://silexperience210.github.io/hunch'
+).replace(/\/+$/, '');
+
+/** A shareable link to a market on the web frontend (mirrors hunch-web's /market?id=). */
+export function shareUrlForMarket(marketIdValue: string): string {
+  return `${HUNCH_WEB_URL}/market/?id=${encodeURIComponent(marketIdValue)}`;
+}

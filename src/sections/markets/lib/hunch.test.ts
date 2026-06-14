@@ -7,18 +7,31 @@ import {
   KIND_ORDER,
   KIND_ORACLE_ANNOUNCE,
   KIND_ORACLE_ATTESTATION,
+  KIND_REPUTATION,
+  KIND_DISPUTE,
+  KIND_MINT_ANNOUNCE,
   marketId,
   parseMarketEvent,
   parseOrderEvent,
   parseAnnounceEvent,
   parseAttestationEvent,
+  parseReputationEvent,
+  parseDisputeEvent,
+  parseMintAnnounceEvent,
   aggregateReputation,
   canonicalSerialization,
+  summarizeResolution,
   type NostrEvent,
   type Reputation,
 } from './hunch';
 import { buildOrderBook, impliedOdds } from './orderbook';
-import { buildOrderTemplate, buildMarketTemplate } from './build';
+import {
+  buildOrderTemplate,
+  buildMarketTemplate,
+  buildReputationTemplate,
+  buildDisputeTemplate,
+  buildDeleteTemplate,
+} from './build';
 
 const PK = 'a'.repeat(64);
 const MID = marketId(PK, 'will-btc-100k');
@@ -129,6 +142,104 @@ describe('hunch parsers (wire format)', () => {
     expect(canonicalSerialization(ev({ kind: 1, content: 'hi' }))).toBe(
       `[0,"${PK}",1,1,[],"hi"]`,
     );
+  });
+});
+
+describe('reputation write path (kind 30891)', () => {
+  it('buildReputationTemplate uses d=<scope>:<subject>, p tag, and round-trips', () => {
+    const subject = 'b'.repeat(64);
+    const tpl = buildReputationTemplate({ subject, scope: 'oracle', score: 75, market: MID, note: 'reliable' });
+    expect(tpl.kind).toBe(KIND_REPUTATION);
+    expect(tpl.tags).toContainEqual(['d', `oracle:${subject}`]);
+    expect(tpl.tags).toContainEqual(['p', subject]);
+    expect(tpl.tags).toContainEqual(['score', '75']);
+    const rep = parseReputationEvent(ev({ kind: KIND_REPUTATION, pubkey: PK, tags: tpl.tags, content: tpl.content }));
+    expect(rep).toMatchObject({ target: subject, scope: 'oracle', score: 75, note: 'reliable' });
+  });
+});
+
+describe('dispute write/read path (kind 30890)', () => {
+  it('buildDisputeTemplate sets d==market and round-trips through parseDisputeEvent', () => {
+    const tpl = buildDisputeTemplate({ market: MID, attestation: 'att-id', claim: 'oracle_misread', evidence: 'see url' });
+    expect(tpl.kind).toBe(KIND_DISPUTE);
+    expect(tpl.tags).toContainEqual(['d', MID]);
+    const dp = parseDisputeEvent(ev({ kind: KIND_DISPUTE, tags: tpl.tags, content: tpl.content }));
+    expect(dp).toMatchObject({ market: MID, attestation: 'att-id', claim: 'oracle_misread', evidence: 'see url' });
+  });
+
+  it('parseDisputeEvent rejects a dispute missing the attestation tag', () => {
+    const bad = ev({ kind: KIND_DISPUTE, tags: [['d', MID], ['market', MID], ['claim', 'premature']] });
+    expect(parseDisputeEvent(bad)).toBeNull();
+  });
+});
+
+describe('resolution spec (auto-resolution / oracle method)', () => {
+  it('carries resolution_spec through buildMarketTemplate → parseMarketEvent', () => {
+    const spec = JSON.stringify({ connector: 'price', asset: 'BTC', quote: 'USD', op: '>=', threshold: 100000 });
+    const tpl = buildMarketTemplate({
+      slug: 'btc-100k',
+      oracle: 'b'.repeat(64),
+      expiry: 2_000_000_000,
+      mint: 'https://mint-signet.21pay.org',
+      dlcContract: 'hip-2',
+      question: 'BTC > 100k?',
+      resolutionSpec: spec,
+    });
+    expect(tpl.tags).toContainEqual(['resolution_spec', spec]);
+    const m = parseMarketEvent(ev({ kind: KIND_MARKET, tags: tpl.tags, content: tpl.content }));
+    expect(m!.resolutionSpec).toBe(spec);
+  });
+
+  it('summarizeResolution renders manual + connector specs', () => {
+    expect(summarizeResolution(undefined)).toMatch(/manual/);
+    expect(summarizeResolution(JSON.stringify({ connector: 'price', asset: 'BTC', op: '>=', threshold: 100000 }))).toContain('price');
+    expect(summarizeResolution(JSON.stringify({ connector: 'llm' }))).toMatch(/AI\/LLM/);
+    expect(summarizeResolution('not json')).toBe('custom spec');
+  });
+});
+
+describe('NIP-09 market deletion (kind 5)', () => {
+  it('builds an addressable deletion for the creator', () => {
+    const tpl = buildDeleteTemplate(PK, 'will-btc-100k');
+    expect(tpl.kind).toBe(5);
+    expect(tpl.tags).toContainEqual(['a', `${KIND_MARKET}:${PK}:will-btc-100k`]);
+  });
+});
+
+describe('mint announce (kind 30892)', () => {
+  it('parses a mint announce and lowercases supported_oracles', () => {
+    const oracle = 'B'.repeat(64);
+    const m = parseMintAnnounceEvent(
+      ev({
+        kind: KIND_MINT_ANNOUNCE,
+        tags: [
+          ['d', 'mint-signet'],
+          ['endpoint', 'https://mint-signet.21pay.org'],
+          ['reserves_proof', 'https://mint-signet.21pay.org/reserves'],
+          ['supported_oracles', `${oracle},${'c'.repeat(64)}`],
+        ],
+        content: '{}',
+      }),
+    );
+    expect(m).toMatchObject({ mintId: 'mint-signet', reservesProof: 'https://mint-signet.21pay.org/reserves' });
+    expect(m!.supportedOracles).toEqual(['b'.repeat(64), 'c'.repeat(64)]);
+  });
+
+  it('rejects a mint announce with a malformed oracle pubkey or missing reserves proof', () => {
+    expect(
+      parseMintAnnounceEvent(
+        ev({
+          kind: KIND_MINT_ANNOUNCE,
+          tags: [['d', 'm'], ['endpoint', 'https://x'], ['reserves_proof', 'https://x/r'], ['supported_oracles', 'nothex']],
+          content: '',
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseMintAnnounceEvent(
+        ev({ kind: KIND_MINT_ANNOUNCE, tags: [['d', 'm'], ['endpoint', 'https://x'], ['supported_oracles', '']], content: '' }),
+      ),
+    ).toBeNull();
   });
 });
 

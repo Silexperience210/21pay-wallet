@@ -9,6 +9,7 @@ export const KIND_ORACLE_ANNOUNCE = 88;
 export const KIND_ORACLE_ATTESTATION = 89;
 export const KIND_REPUTATION = 30891;
 export const KIND_DISPUTE = 30890;
+export const KIND_MINT_ANNOUNCE = 30892;
 
 /** The HIP-2 canonical outcomes, in order. */
 export const OUTCOMES = ['YES', 'NO', 'INVALID'] as const;
@@ -56,6 +57,8 @@ export interface Market {
   category?: string;
   image?: string;
   topics: string[];
+  /** Optional machine-readable resolution spec (connector JSON) for oracle auto-resolution. */
+  resolutionSpec?: string;
   content: MarketContent;
 }
 
@@ -92,6 +95,7 @@ export function parseMarketEvent(ev: NostrEvent): Market | null {
     category: tagValue(ev.tags, 'category'),
     image: tagValue(ev.tags, 'image'),
     topics: tagValues(ev.tags, 't'),
+    resolutionSpec: tagValue(ev.tags, 'resolution_spec'),
     content: {
       question: content.question,
       resolution_criteria: content.resolution_criteria ?? '',
@@ -99,6 +103,32 @@ export function parseMarketEvent(ev: NostrEvent): Market | null {
       rules_version: content.rules_version ?? '',
     },
   };
+}
+
+/** Human-readable summary of a market's auto-resolution spec (mirrors hunch-web's
+ *  summarizeSpec) — shown for transparency at bet time. */
+export function summarizeResolution(raw?: string): string {
+  if (!raw) return 'manual (oracle decides)';
+  let s: Record<string, unknown>;
+  try {
+    s = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return 'custom spec';
+  }
+  switch (s.connector) {
+    case 'price':
+      return `auto · price ${s.asset}/${s.quote ?? 'USD'} ${s.op} ${s.threshold}`;
+    case 'weather':
+      return `auto · weather ${s.metric ?? 'precipitation'} @(${s.lat},${s.lon}) ${s.date} ${s.op} ${s.threshold}`;
+    case 'onchain':
+      return `auto · onchain ${s.metric} ${s.op} ${s.threshold}`;
+    case 'http':
+      return `auto · http ${s.url} ${s.op} ${s.threshold}`;
+    case 'llm':
+      return 'auto · AI/LLM verdict (oracle’s model)';
+    default:
+      return `auto · ${s.connector ?? 'custom'}`;
+  }
 }
 
 export interface Order {
@@ -227,6 +257,77 @@ export function aggregateReputation(reps: Reputation[]): ReputationSummary | nul
   if (byRater.size === 0) return null;
   const vals = [...byRater.values()].map((r) => r.score);
   return { avg: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length), count: byRater.size };
+}
+
+export interface Dispute {
+  /** The author of the dispute (event pubkey). */
+  disputer: string;
+  /** Dispute identifier — the `d` tag (this client sets it to the market id). */
+  d: string;
+  /** Market being disputed. */
+  market: string;
+  /** Event id of the disputed kind:89 attestation. */
+  attestation: string;
+  /** Short claim category, e.g. `oracle_misread`, `source_unavailable`. */
+  claim: string;
+  /** Free-form evidence body (content). */
+  evidence: string;
+  /** When the dispute was signed (for newest-per-disputer dedup). */
+  createdAt: number;
+}
+
+/** Parses a kind:30890 HIP-1 dispute, or null if malformed (mirrors `Dispute::from_event`). */
+export function parseDisputeEvent(ev: NostrEvent): Dispute | null {
+  if (ev.kind !== KIND_DISPUTE) return null;
+  const d = tagValue(ev.tags, 'd');
+  const market = tagValue(ev.tags, 'market');
+  const attestation = tagValue(ev.tags, 'attestation');
+  const claim = tagValue(ev.tags, 'claim');
+  if (!d || !market || !attestation || !claim) return null;
+  return {
+    disputer: ev.pubkey,
+    d,
+    market,
+    attestation,
+    claim,
+    evidence: ev.content,
+    createdAt: ev.created_at,
+  };
+}
+
+export interface MintAnnounce {
+  /** The mint identifier — the `d` tag. */
+  mintId: string;
+  /** Mint endpoint URL (HTTPS, onion, or IPFS gateway). */
+  endpoint: string;
+  /** Latest reserves-proof URL (HIP-3 transparency — required). */
+  reservesProof: string;
+  /** Pubkeys (x-only hex) of the oracles this mint accepts. */
+  supportedOracles: string[];
+  /** Free-form body — mint policy JSON (content). */
+  body: string;
+  /** When the announce was signed (for newest dedup). */
+  createdAt: number;
+}
+
+/** Parses a kind:30892 HIP-1 mint announce, or null if malformed (mirrors `MintAnnounce::from_event`). */
+export function parseMintAnnounceEvent(ev: NostrEvent): MintAnnounce | null {
+  if (ev.kind !== KIND_MINT_ANNOUNCE) return null;
+  const mintId = tagValue(ev.tags, 'd');
+  const endpoint = tagValue(ev.tags, 'endpoint');
+  const reservesProof = tagValue(ev.tags, 'reserves_proof');
+  const supportedRaw = tagValue(ev.tags, 'supported_oracles');
+  if (!mintId || !endpoint || !reservesProof || supportedRaw == null) return null;
+  const supportedOracles = supportedRaw.split(',').map((s) => s.trim()).filter(Boolean);
+  for (const p of supportedOracles) if (!/^[0-9a-f]{64}$/i.test(p)) return null; // 32-byte hex
+  return {
+    mintId,
+    endpoint,
+    reservesProof,
+    supportedOracles: supportedOracles.map((s) => s.toLowerCase()),
+    body: ev.content,
+    createdAt: ev.created_at,
+  };
 }
 
 /** Canonical NIP-01 serialization string used for the event id. */
