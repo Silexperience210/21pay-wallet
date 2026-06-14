@@ -58,6 +58,18 @@ export async function redeem(wallet: Wallet, proofs: Proof[], spendPrivkey: stri
   return wallet.receive(proofs, { privkey: spendPrivkey });
 }
 
+/** Mints `amount` sat of plain (unlocked) proofs once the quote is PAID — a wallet top-up
+ *  (no outcome lock). Use after waitPaid confirms the deposit invoice settled. */
+export async function mintPlain(wallet: Wallet, amount: number, quote: unknown): Promise<Proof[]> {
+  return wallet.mintProofs('bolt11', amount, quote as never);
+}
+
+/** True once the mint marks the quote PAID — a single, non-blocking probe (for recovery). */
+export async function isQuotePaid(wallet: Wallet, quote: unknown): Promise<boolean> {
+  const status = (await wallet.checkMintQuote('bolt11', quote as never)) as { state?: string };
+  return status.state === 'PAID';
+}
+
 function amountToNumber(a: unknown): number {
   if (typeof a === 'number') return a;
   if (typeof a === 'bigint') return Number(a);

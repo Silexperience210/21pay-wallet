@@ -1,8 +1,9 @@
-// Markets section config (MARKET-06 / D-05). SIGNET IS THE HARD DEFAULT — there is
-// no mainnet code path in v1 at all: the Hunch audit gate forbids mainnet before an
-// external audit, and a flag the client could flip would violate "server-gated,
-// cannot be flipped client-side". What does not exist cannot be enabled.
-export const HUNCH_NETWORK = 'signet' as const;
+// Markets section config (MARKET-06 / D-05). MAINNET (operator decision): the Hunch
+// mint that backs stakes is the operator's own pre-audit mainnet mint, hard-CAPPED at
+// 100k sat/op, so the in-app (mainnet) wallet can actually fund deposits — a signet mint
+// could never be paid from a mainnet wallet, which is why deposits weren't crediting.
+// Real sats, pre-audit: keep the cap, no public marketing. Override the mint via env.
+export const HUNCH_NETWORK = 'mainnet' as const;
 
 /** Relays carrying the Hunch markets/oracle. Multi-relay by design (Hunch CLAUDE.md). */
 export const HUNCH_RELAYS: string[] = (
@@ -12,12 +13,12 @@ export const HUNCH_RELAYS: string[] = (
   .map((s: string) => s.trim())
   .filter((s: string) => s.startsWith('ws'));
 
-/** The signet Cashu mint backing v1 stakes. A market's own `mint` tag wins when it is
- *  an https URL (multi-mint by design); this is only the fallback/display default. */
+/** The Cashu mint backing stakes + the Hunch wallet. A market's own `mint` tag wins when
+ *  it is an https URL (multi-mint by design); this is the fallback/display default. */
 export const HUNCH_MINT_URL: string =
-  process.env.EXPO_PUBLIC_HUNCH_MINT ?? 'https://mint-signet.21pay.org';
+  process.env.EXPO_PUBLIC_HUNCH_MINT ?? 'https://mint-mainnet.21pay.org';
 
-/** Bet bounds (signet pre-audit guardrails — generous but finite). */
+/** Bet/deposit bounds — the upper bound matches the mint's per-op cap (100k, pre-audit). */
 export const BET_MIN_SAT = 10;
 export const BET_MAX_SAT = 100_000;
 
@@ -37,3 +38,7 @@ export const HUNCH_WEB_URL: string = (
 export function shareUrlForMarket(marketIdValue: string): string {
   return `${HUNCH_WEB_URL}/market/?id=${encodeURIComponent(marketIdValue)}`;
 }
+
+/** Operator Lightning Address opt-in tips go to (mint liquidity / oracle / hosting).
+ *  Overridable via env so any operator hosting their own stack can redirect support. */
+export const HUNCH_TIP_ADDRESS: string = (process.env.EXPO_PUBLIC_HUNCH_TIP_ADDRESS ?? 'tips@21pay.org').trim();
