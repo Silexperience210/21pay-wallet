@@ -1,8 +1,8 @@
 // Markets browse (MARKET-01): kind-30888 events from the Hunch relays, every event
 // Schnorr-verified before display (relays untrusted). All async work degrades to an
 // inline message — never an unhandled throw past the boundary (MARKET-07 layer 3).
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { ScreenScaffold, SecondaryButton, theme } from '@/ui';
@@ -16,11 +16,15 @@ function isOpen(m: Market): boolean {
   return m.expiry > Math.floor(Date.now() / 1000);
 }
 
+type StatusFilter = 'all' | 'open' | 'expired';
+
 export function MarketsBrowseScreen(): React.ReactElement {
   const [markets, setMarkets] = useState<Market[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<StatusFilter>('all');
 
   const load = useCallback(async () => {
     try {
@@ -60,6 +64,23 @@ export function MarketsBrowseScreen(): React.ReactElement {
     setRefreshing(false);
   }, [load]);
 
+  // Client-side search (question) + open/expired filter.
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return markets.filter((m) => {
+      if (status === 'open' && !isOpen(m)) return false;
+      if (status === 'expired' && isOpen(m)) return false;
+      if (q && !m.content.question.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [markets, search, status]);
+
+  const FILTERS: { key: StatusFilter; label: string }[] = [
+    { key: 'all', label: t('markets.filter.all') },
+    { key: 'open', label: t('markets.filter.open') },
+    { key: 'expired', label: t('markets.filter.expired') },
+  ];
+
   return (
     <ScreenScaffold title={t('markets.title')}>
       <View style={styles.headerRow}>
@@ -74,6 +95,27 @@ export function MarketsBrowseScreen(): React.ReactElement {
       <View style={styles.createRow}>
         <SecondaryButton label={t('markets.createEntry')} onPress={() => router.push('/(sections)/markets/create')} />
       </View>
+      <TextInput
+        style={styles.search}
+        value={search}
+        onChangeText={setSearch}
+        placeholder={t('markets.search')}
+        placeholderTextColor={theme.color.textMuted}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      <View style={styles.filterRow}>
+        {FILTERS.map((f) => (
+          <Pressable
+            key={f.key}
+            onPress={() => setStatus(f.key)}
+            accessibilityRole="button"
+            style={[styles.filterChip, status === f.key && styles.filterChipOn]}
+          >
+            <Text style={[styles.filterChipText, status === f.key && styles.filterChipTextOn]}>{f.label}</Text>
+          </Pressable>
+        ))}
+      </View>
       {err ? <Text style={styles.err}>{err}</Text> : null}
       <ScrollView
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.color.accent} />}
@@ -81,10 +123,10 @@ export function MarketsBrowseScreen(): React.ReactElement {
       >
         {loading ? (
           <Text style={styles.lead}>{t('markets.loading')}</Text>
-        ) : markets.length === 0 && !err ? (
+        ) : filtered.length === 0 && !err ? (
           <Text style={styles.lead}>{t('markets.empty')}</Text>
         ) : (
-          markets.map((m) => (
+          filtered.map((m) => (
             <Pressable
               key={m.id}
               accessibilityRole="button"
@@ -115,6 +157,28 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.md, marginBottom: theme.space.sm },
   createRow: { marginBottom: theme.space.md },
   headerBtn: { flex: 1 },
+  search: {
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.space.lg,
+    paddingVertical: theme.space.sm,
+    fontFamily: theme.font.body.fontFamily,
+    fontSize: 14,
+    color: theme.color.text,
+    marginBottom: theme.space.sm,
+  },
+  filterRow: { flexDirection: 'row', gap: theme.space.sm, marginBottom: theme.space.sm },
+  filterChip: {
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.space.xs,
+  },
+  filterChipOn: { borderColor: theme.color.accent },
+  filterChipText: { fontFamily: theme.font.label.fontFamily, fontSize: 12, color: theme.color.textMuted },
+  filterChipTextOn: { color: theme.color.accent },
   netBadge: {
     flexDirection: 'row',
     alignItems: 'center',

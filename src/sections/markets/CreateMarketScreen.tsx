@@ -12,7 +12,7 @@ import { useSectionCapabilities } from '../SectionHost';
 import { buildMarketTemplate } from './lib/build';
 import { publishToRelays, queryRelays } from './lib/relay';
 import { verifyEvent } from './lib/verify';
-import { KIND_ORACLE_ANNOUNCE, aggregateReputation } from './lib/hunch';
+import { KIND_ORACLE_ANNOUNCE, marketId, aggregateReputation } from './lib/hunch';
 import { fetchReputation } from './lib/oracle';
 import { HUNCH_RELAYS, HUNCH_MINT_URL } from './marketsConfig';
 
@@ -31,6 +31,22 @@ const DURATIONS = [
 
 const ORACLE_PREF_KEY = 'markets.lastOracle';
 
+type AutoKind = 'manual' | 'price' | 'onchain' | 'weather' | 'http' | 'llm';
+type Op = '>=' | '>' | '<=' | '<';
+
+const AUTO_KINDS: { key: AutoKind; labelKey: string }[] = [
+  { key: 'manual', labelKey: 'markets.create.auto.manual' },
+  { key: 'price', labelKey: 'markets.create.auto.price' },
+  { key: 'onchain', labelKey: 'markets.create.auto.onchain' },
+  { key: 'weather', labelKey: 'markets.create.auto.weather' },
+  { key: 'http', labelKey: 'markets.create.auto.http' },
+  { key: 'llm', labelKey: 'markets.create.auto.llm' },
+];
+const OPS: Op[] = ['>=', '>', '<=', '<'];
+const OC_METRICS = ['block_height', 'mempool_count', 'fee_fastest'];
+const W_METRICS = ['precipitation_sum', 'temperature_2m_max', 'temperature_2m_min'];
+const LLM_PROVIDERS = ['default', 'kimi', 'claude', 'consensus', 'failover'];
+
 function slugify(question: string): string {
   const base = question
     .toLowerCase()
@@ -48,8 +64,24 @@ export function CreateMarketScreen(): React.ReactElement {
   const [resolution, setResolution] = useState('');
   const [oracle, setOracle] = useState(process.env.EXPO_PUBLIC_HUNCH_ORACLE ?? '');
   const [days, setDays] = useState(7);
+  // Auto-resolution method ("oracle possibilities") — friendly presets that compile to
+  // a connector resolution_spec, so a creator never writes raw JSON. 'manual' = no spec.
+  const [autoKind, setAutoKind] = useState<AutoKind>('manual');
+  const [op, setOp] = useState<Op>('>=');
+  const [threshold, setThreshold] = useState('');
+  const [asset, setAsset] = useState('BTC');
+  const [quote, setQuote] = useState('USD');
+  const [ocMetric, setOcMetric] = useState('block_height');
+  const [wLat, setWLat] = useState('');
+  const [wLon, setWLon] = useState('');
+  const [wDate, setWDate] = useState('');
+  const [wMetric, setWMetric] = useState('precipitation_sum');
+  const [hUrl, setHUrl] = useState('');
+  const [hPath, setHPath] = useState('');
+  const [llmProvider, setLlmProvider] = useState('default');
   const [suggestions, setSuggestions] = useState<OracleSuggestion[]>([]);
   const [busy, setBusy] = useState(false);
+  const [announcing, setAnnouncing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   // Oracle discovery: ACTIVE announcers (kind 88) on the relays, decorated with
@@ -95,9 +127,49 @@ export function CreateMarketScreen(): React.ReactElement {
   const oracleValid = useMemo(() => /^[0-9a-f]{64}$/i.test(oracle.trim()), [oracle]);
   const canCreate = question.trim().length >= 8 && oracleValid && !busy;
 
+  /** Compiles the chosen method into a connector resolution_spec, or undefined for manual.
+   *  Throws on invalid input (caught in onCreate → friendly inline error). */
+  const buildResolutionSpec = (): string | undefined => {
+    if (autoKind === 'manual') return undefined;
+    if (autoKind === 'llm') {
+      const spec: Record<string, unknown> = { connector: 'llm', question: question.trim() };
+      if (llmProvider !== 'default') spec.provider = llmProvider;
+      return JSON.stringify(spec);
+    }
+    const th = Number(threshold);
+    if (!threshold.trim() || !Number.isFinite(th)) throw new Error('threshold');
+    switch (autoKind) {
+      case 'price':
+        return JSON.stringify({ connector: 'price', asset: asset.trim() || 'BTC', quote: quote.trim() || 'USD', op, threshold: th });
+      case 'onchain':
+        return JSON.stringify({ connector: 'onchain', metric: ocMetric, op, threshold: th });
+      case 'weather': {
+        const lat = Number(wLat);
+        const lon = Number(wLon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error('coords');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(wDate.trim())) throw new Error('date');
+        return JSON.stringify({ connector: 'weather', lat, lon, date: wDate.trim(), metric: wMetric, op, threshold: th });
+      }
+      case 'http': {
+        if (!hUrl.trim()) throw new Error('url');
+        const path = hPath.split(/[.,]/).map((s) => s.trim()).filter(Boolean);
+        if (path.length === 0) throw new Error('path');
+        return JSON.stringify({ connector: 'http', url: hUrl.trim(), path, op, threshold: th });
+      }
+    }
+    return undefined;
+  };
+
   const onCreate = async () => {
     if (!canCreate) return;
     setErr(null);
+    let resolutionSpec: string | undefined;
+    try {
+      resolutionSpec = buildResolutionSpec();
+    } catch {
+      setErr(t('markets.create.auto.invalid'));
+      return;
+    }
     setBusy(true);
     try {
       const expiry = Math.floor(Date.now() / 1000) + days * 24 * 3600;
@@ -110,6 +182,7 @@ export function CreateMarketScreen(): React.ReactElement {
         dlcContract: 'hip-2',
         question: question.trim(),
         resolution: resolution.trim() || undefined,
+        resolutionSpec,
       });
       const signed = await caps.signer.signHunchEvent(template);
       const ok = await publishToRelays(HUNCH_RELAYS, signed);
@@ -118,6 +191,29 @@ export function CreateMarketScreen(): React.ReactElement {
         return;
       }
       await caps.store.set(ORACLE_PREF_KEY, oracle.trim().toLowerCase()).catch(() => {});
+
+      // If the creator is also the oracle, commit the nonce now so the market is
+      // immediately bettable — otherwise a self-oracle market is a dead-end until the
+      // creator manually announces from the detail page (the #1 "can't bet" trap).
+      // Best-effort: a market with no announce is still valid; the oracle panel retries.
+      if (oracle.trim().toLowerCase() === signed.pubkey.toLowerCase()) {
+        setAnnouncing(true);
+        try {
+          const id = marketId(signed.pubkey, slug);
+          const { nonce } = await caps.signer.oracleAnnounce(id);
+          const ann = await caps.signer.signHunchEvent({
+            kind: KIND_ORACLE_ANNOUNCE,
+            tags: [['market', id], ['nonce', nonce]],
+            content: 'committed via 21pay wallet',
+          });
+          await publishToRelays(HUNCH_RELAYS, ann);
+          await caps.store.set('markets.myPubkey', signed.pubkey).catch(() => {});
+        } catch {
+          /* market stands; the oracle can still announce from the market page */
+        } finally {
+          setAnnouncing(false);
+        }
+      }
       router.replace({
         pathname: '/(sections)/markets/market',
         params: { creator: signed.pubkey, d: slug },
@@ -170,6 +266,95 @@ export function CreateMarketScreen(): React.ReactElement {
           </Pressable>
         ))}
       </View>
+
+      {/* Resolution method — the "oracle possibilities": manual, or an auto-resolution
+          connector compiled into resolution_spec (mirrors hunch-web's create rubrique). */}
+      <Text style={styles.eyebrow}>{t('markets.create.autoTitle')}</Text>
+      <View style={styles.chips}>
+        {AUTO_KINDS.map(({ key, labelKey }) => (
+          <Pressable
+            key={key}
+            onPress={() => setAutoKind(key)}
+            accessibilityRole="button"
+            style={[styles.chip, autoKind === key && styles.chipOn]}
+          >
+            <Text style={[styles.chipText, autoKind === key && styles.chipTextOn]}>{t(labelKey)}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {autoKind === 'price' ? (
+        <View style={styles.paramRow}>
+          <TextInput style={[styles.input, styles.flex1]} value={asset} onChangeText={setAsset} placeholder="asset (BTC)" placeholderTextColor={theme.color.textMuted} autoCapitalize="characters" autoCorrect={false} />
+          <TextInput style={[styles.input, styles.flex1]} value={quote} onChangeText={setQuote} placeholder="quote (USD)" placeholderTextColor={theme.color.textMuted} autoCapitalize="characters" autoCorrect={false} />
+        </View>
+      ) : null}
+
+      {autoKind === 'onchain' ? (
+        <View style={styles.chips}>
+          {OC_METRICS.map((m) => (
+            <Pressable key={m} onPress={() => setOcMetric(m)} accessibilityRole="button" style={[styles.chip, ocMetric === m && styles.chipOn]}>
+              <Text style={[styles.chipText, ocMetric === m && styles.chipTextOn]}>{m}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
+      {autoKind === 'weather' ? (
+        <>
+          <View style={styles.paramRow}>
+            <TextInput style={[styles.input, styles.flex1]} value={wLat} onChangeText={(v) => setWLat(v.replace(/[^0-9.\-]/g, ''))} keyboardType="numbers-and-punctuation" placeholder="lat" placeholderTextColor={theme.color.textMuted} />
+            <TextInput style={[styles.input, styles.flex1]} value={wLon} onChangeText={(v) => setWLon(v.replace(/[^0-9.\-]/g, ''))} keyboardType="numbers-and-punctuation" placeholder="lon" placeholderTextColor={theme.color.textMuted} />
+          </View>
+          <TextInput style={styles.input} value={wDate} onChangeText={setWDate} placeholder="date (YYYY-MM-DD)" placeholderTextColor={theme.color.textMuted} autoCorrect={false} />
+          <View style={styles.chips}>
+            {W_METRICS.map((m) => (
+              <Pressable key={m} onPress={() => setWMetric(m)} accessibilityRole="button" style={[styles.chip, wMetric === m && styles.chipOn]}>
+                <Text style={[styles.chipText, wMetric === m && styles.chipTextOn]}>{m.replace('_2m', '').replace('_sum', '')}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      ) : null}
+
+      {autoKind === 'http' ? (
+        <>
+          <TextInput style={styles.input} value={hUrl} onChangeText={setHUrl} placeholder="https://api.example.com/score" placeholderTextColor={theme.color.textMuted} autoCapitalize="none" autoCorrect={false} />
+          <TextInput style={styles.input} value={hPath} onChangeText={setHPath} placeholder="path to number (data.0.score)" placeholderTextColor={theme.color.textMuted} autoCapitalize="none" autoCorrect={false} />
+        </>
+      ) : null}
+
+      {autoKind === 'llm' ? (
+        <View style={styles.chips}>
+          {LLM_PROVIDERS.map((p) => (
+            <Pressable key={p} onPress={() => setLlmProvider(p)} accessibilityRole="button" style={[styles.chip, llmProvider === p && styles.chipOn]}>
+              <Text style={[styles.chipText, llmProvider === p && styles.chipTextOn]}>{p}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
+      {autoKind !== 'manual' && autoKind !== 'llm' ? (
+        <View style={styles.paramRow}>
+          {OPS.map((o) => (
+            <Pressable key={o} onPress={() => setOp(o)} accessibilityRole="button" style={[styles.opChip, op === o && styles.chipOn]}>
+              <Text style={[styles.chipText, op === o && styles.chipTextOn]}>{o}</Text>
+            </Pressable>
+          ))}
+          <TextInput
+            style={[styles.input, styles.flex1]}
+            value={threshold}
+            onChangeText={(v) => setThreshold(v.replace(/[^0-9.\-]/g, ''))}
+            keyboardType="numbers-and-punctuation"
+            placeholder={t('markets.create.auto.threshold')}
+            placeholderTextColor={theme.color.textMuted}
+          />
+        </View>
+      ) : null}
+
+      <Text style={styles.hint}>
+        {autoKind === 'manual' ? t('markets.create.auto.manualNote') : t('markets.create.auto.autoNote')}
+      </Text>
 
       <Text style={styles.eyebrow}>{t('markets.create.oracle')}</Text>
       <View style={styles.oracleList}>
@@ -233,7 +418,11 @@ export function CreateMarketScreen(): React.ReactElement {
         <Text style={styles.hint}>{t('markets.create.oracleHint')}</Text>
       </View>
 
-      <PrimaryButton label={t('markets.create.cta')} onPress={onCreate} loading={busy} />
+      <PrimaryButton
+        label={announcing ? t('markets.create.announcing') : t('markets.create.cta')}
+        onPress={onCreate}
+        loading={busy}
+      />
       {err ? <Text style={styles.err}>{err}</Text> : null}
       <Text style={styles.hint}>{t('markets.create.note')}</Text>
     </ScreenScaffold>
@@ -254,7 +443,16 @@ const styles = StyleSheet.create({
     color: theme.color.text,
   },
   multiline: { minHeight: 72 },
-  chips: { flexDirection: 'row', gap: theme.space.sm },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
+  paramRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm, marginTop: theme.space.sm },
+  flex1: { flex: 1 },
+  opChip: {
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.space.sm,
+  },
   chip: {
     flex: 1,
     alignItems: 'center',
