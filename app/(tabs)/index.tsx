@@ -138,7 +138,7 @@ export default function Home(): React.ReactElement {
             tint="#7850ff"
             title={t('home.card.markets.title')}
             subtitle={t('home.card.markets.sub')}
-            tag="signet"
+            tag="mainnet"
             onPress={() => router.push('/(sections)/markets')}
           />
         ) : null}

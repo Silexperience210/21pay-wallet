@@ -69,26 +69,51 @@ async function creditBalance(caps: SectionCapabilities, mintUrl: string, proofs:
 const isAlreadyIssued = (e: unknown): boolean =>
   e instanceof Error && /issued|already|spent/i.test(e.message);
 
-// ── Deposit (funded by the in-app wallet) ─────────────────────────────────────
-/** Top up: mint a deposit quote, persist it, pay the invoice from the in-app wallet,
- *  then mint + credit. Returns the credited sat. A failure after payment leaves the
- *  pending entry so recoverPending() credits it on the next open — funds are never lost. */
-export async function deposit(caps: SectionCapabilities, mintUrl: string, amountSat: number): Promise<number> {
+// ── Deposit (funded by the in-app wallet, with an invoice fallback) ────────────
+/** Reject a hung network call instead of spinning forever (timer cleared on settle). */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out`)), ms);
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer)) as Promise<T>;
+}
+
+/** Step 1 — mint a deposit quote and PERSIST it (crash-safety) before any money moves.
+ *  Returns the bolt11 invoice to pay (auto from the in-app wallet AND shown for fallback). */
+export async function startDeposit(
+  caps: SectionCapabilities,
+  mintUrl: string,
+  amountSat: number,
+): Promise<{ depositId: string; invoice: string }> {
   if (!Number.isInteger(amountSat) || amountSat < 1) throw new Error('deposit amount must be >= 1 sat');
-  const wallet = await cashu.connect(mintUrl);
-  const { quote, invoice } = await cashu.depositQuote(wallet, amountSat);
+  const wallet = await withTimeout(cashu.connect(mintUrl), 20000, 'mint connect');
+  const { quote, invoice } = await withTimeout(cashu.depositQuote(wallet, amountSat), 20000, 'mint quote');
   if (!invoice) throw new Error('mint returned no invoice');
+  const depositId = `dep-${Date.now()}`;
+  await savePending(caps, [
+    { id: depositId, mintUrl, quote, amountSat, createdAt: Math.floor(Date.now() / 1000) },
+    ...(await loadPending(caps)),
+  ]);
+  return { depositId, invoice };
+}
 
-  const pending: PendingDeposit = { id: `dep-${Date.now()}`, mintUrl, quote, amountSat, createdAt: Math.floor(Date.now() / 1000) };
-  // CRASH-SAFETY: persist the quote BEFORE moving any money.
-  await savePending(caps, [pending, ...(await loadPending(caps))]);
+/** Step 2a — best-effort: pay the deposit invoice from the in-app wallet. Caller catches:
+ *  on failure (self-payment / no route / low balance) the user can still pay it externally. */
+export async function payDepositFromWallet(caps: SectionCapabilities, invoice: string): Promise<void> {
+  await withTimeout(caps.wallet.payInvoice(invoice), 45000, 'wallet payment');
+}
 
-  await caps.wallet.payInvoice(invoice); // mainnet in-app wallet → mainnet mint
-
-  await cashu.waitPaid(wallet, quote);
-  const proofs = await cashu.mintPlain(wallet, amountSat, quote);
-  await creditBalance(caps, mintUrl, proofs);
-  await removePending(caps, pending.id);
+/** Step 2b — wait for the invoice to settle at the mint, then mint + credit the balance.
+ *  Throws if it isn't paid within the window; the pending entry stays for recoverPending(). */
+export async function awaitCredit(caps: SectionCapabilities, depositId: string, tries = 90): Promise<number> {
+  const p = (await loadPending(caps)).find((x) => x.id === depositId);
+  if (!p) return 0;
+  const wallet = await cashu.connect(p.mintUrl);
+  await cashu.waitPaid(wallet, p.quote, tries);
+  const proofs = await cashu.mintPlain(wallet, p.amountSat, p.quote);
+  await creditBalance(caps, p.mintUrl, proofs);
+  await removePending(caps, depositId);
   return cashu.proofsTotal(proofs);
 }
 

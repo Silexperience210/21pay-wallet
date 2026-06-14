@@ -23,7 +23,7 @@
         "EXPO_PUBLIC_CASINO_ORIGIN": "https://satoshi-casino21.vercel.app",
         "EXPO_PUBLIC_BITRENT_ORIGIN": "https://bitrent.vercel.app",
         "EXPO_PUBLIC_HUNCH_RELAYS": "wss://relay.21pay.org,wss://nos.lol,wss://relay.damus.io",
-        "EXPO_PUBLIC_HUNCH_MINT": "https://mint-signet.21pay.org"
+        "EXPO_PUBLIC_HUNCH_MINT": "https://mint-mainnet.21pay.org"
       },
       "android": {
         "buildType": "apk"
@@ -39,7 +39,7 @@
         "EXPO_PUBLIC_CASINO_ORIGIN": "https://satoshi-casino21.vercel.app",
         "EXPO_PUBLIC_BITRENT_ORIGIN": "https://bitrent.vercel.app",
         "EXPO_PUBLIC_HUNCH_RELAYS": "wss://relay.21pay.org,wss://nos.lol,wss://relay.damus.io",
-        "EXPO_PUBLIC_HUNCH_MINT": "https://mint-signet.21pay.org"
+        "EXPO_PUBLIC_HUNCH_MINT": "https://mint-mainnet.21pay.org"
       },
       "android": {
         "buildType": "app-bundle"

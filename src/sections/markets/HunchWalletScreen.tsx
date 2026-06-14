@@ -4,10 +4,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { ScreenScaffold, PrimaryButton, SecondaryButton, theme } from '@/ui';
+import { ScreenScaffold, PrimaryButton, SecondaryButton, InvoiceCard, theme } from '@/ui';
 import { t } from '@/i18n';
 import { useSectionCapabilities } from '../SectionHost';
-import { balanceTotal, deposit, withdraw, recoverPending } from './cashuWallet';
+import { balanceTotal, startDeposit, payDepositFromWallet, awaitCredit, withdraw, recoverPending } from './cashuWallet';
 import { HUNCH_MINT_URL, HUNCH_NETWORK, BET_MIN_SAT, BET_MAX_SAT } from './marketsConfig';
 
 const clampAmount = (v: string) => v.replace(/[^0-9]/g, '');
@@ -18,6 +18,9 @@ export function HunchWalletScreen(): React.ReactElement {
   const [balance, setBalance] = useState(0);
   const [depositAmount, setDepositAmount] = useState('1000');
   const [withdrawAmount, setWithdrawAmount] = useState('');
+  // The deposit invoice — shown so the user can pay from ANY wallet if in-app auto-pay
+  // can't (self-payment / no route / low balance). It still credits in the background.
+  const [invoice, setInvoice] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<'deposit' | 'withdraw' | null>(null);
@@ -63,13 +66,24 @@ export function HunchWalletScreen(): React.ReactElement {
     setBusy('deposit');
     setErr(null);
     setNotice(null);
+    setInvoice('');
     try {
-      const credited = await deposit(caps, mint, depSat);
+      // 1. Mint a quote (persisted before any money moves) and show the invoice.
+      const { depositId, invoice: inv } = await startDeposit(caps, mint, depSat);
+      setInvoice(inv);
+      // 2. Try to pay it from the in-app wallet — best effort. If it can't (self-payment,
+      //    no route, low balance), surface why and leave the invoice up for external payment.
+      payDepositFromWallet(caps, inv).catch((e) => {
+        setErr(`${t('markets.wallet.autopayFail')} ${e instanceof Error ? e.message : ''}`.trim());
+      });
+      // 3. Credit as soon as the invoice settles (auto-pay OR external), up to ~90s.
+      const credited = await awaitCredit(caps, depositId);
+      setInvoice('');
       setNotice(t('markets.wallet.depositDone', { sats: String(credited) }));
       setBalance(await balanceTotal(caps, mint));
-    } catch {
-      setErr(t('markets.wallet.depositErr'));
-      await load();
+    } catch (e) {
+      // Keep the invoice visible — a paid deposit still credits on reopen (recoverPending).
+      setErr(`${t('markets.wallet.depositErr')}${e instanceof Error ? ' — ' + e.message : ''}`);
     } finally {
       setBusy(null);
     }
@@ -126,6 +140,12 @@ export function HunchWalletScreen(): React.ReactElement {
           onPress={onDeposit}
           loading={busy === 'deposit'}
         />
+        {invoice ? (
+          <View style={styles.invoiceWrap}>
+            <Text style={styles.invoiceHint}>{t('markets.wallet.payInvoiceHint')}</Text>
+            <InvoiceCard data={invoice} kind="bolt11" />
+          </View>
+        ) : null}
 
         <Text style={styles.eyebrow}>{t('markets.wallet.withdrawTitle')}</Text>
         <TextInput
@@ -177,4 +197,6 @@ const styles = StyleSheet.create({
     marginBottom: theme.space.sm,
   },
   note: { fontFamily: theme.font.body.fontFamily, fontSize: 12, lineHeight: 17, color: theme.color.textMuted, marginTop: theme.space.lg },
+  invoiceWrap: { marginTop: theme.space.md, gap: theme.space.sm },
+  invoiceHint: { fontFamily: theme.font.body.fontFamily, fontSize: 12, color: theme.color.accent, textAlign: 'center' },
 });
